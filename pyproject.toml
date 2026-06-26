@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "toaster"
+version = "0.1.0"
+description = "Annotate lidar point clouds in 3D, with pluggable clustering/segmentation models."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Augustin Bresset", email = "augustin.bresset@gmail.com" }]
+keywords = ["lidar", "point-cloud", "annotation", "segmentation", "clustering"]
+dependencies = [
+    "numpy",
+    "PyYAML",
+    "pyvista",
+    "pyvistaqt",
+    "qtpy",
+    "PySide6",
+    "scikit-learn>=1.3",
+    "laspy",
+    "plyfile",
+]
+
+[project.optional-dependencies]
+apairo = ["apairo @ git+https://github.com/apairo-robotics/apairo.git"]
+open3d = ["open3d"]
+hdbscan = ["hdbscan"]
+models = ["onnxruntime-gpu"]
+torch = ["torch"]
+dev = ["pytest", "pytest-qt", "ruff"]
+
+[project.scripts]
+toaster = "toaster.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/augustin-b/toaster"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["toaster*"]
+
+[tool.setuptools.package-data]
+toaster = ["py.typed", "schemas/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]

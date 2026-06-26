@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtual envs
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Toaster annotation sidecars produced while testing locally
+*.toaster.npy
+*.toaster.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

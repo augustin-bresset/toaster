@@ -129,6 +129,45 @@ export class Viewer {
       : { LEFT: M.ROTATE, MIDDLE: M.DOLLY, RIGHT: M.PAN };
   }
 
+  // Draw a translucent wireframe cube around each voxel centre (one merged
+  // LineSegments — cheap even for tens of thousands of voxels).
+  setVoxelGrid(centers, size) {
+    this.clearVoxelGrid();
+    const n = centers.length / 3;
+    if (n === 0) return;
+    const h = size / 2;
+    const corner = [
+      [-h, -h, -h], [h, -h, -h], [h, h, -h], [-h, h, -h],
+      [-h, -h, h], [h, -h, h], [h, h, h], [-h, h, h],
+    ];
+    const edges = [
+      [0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6],
+      [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7],
+    ];
+    const pos = new Float32Array(n * edges.length * 2 * 3);
+    let k = 0;
+    for (let i = 0; i < n; i++) {
+      const cx = centers[i * 3], cy = centers[i * 3 + 1], cz = centers[i * 3 + 2];
+      for (const [a, b] of edges) {
+        pos[k++] = cx + corner[a][0]; pos[k++] = cy + corner[a][1]; pos[k++] = cz + corner[a][2];
+        pos[k++] = cx + corner[b][0]; pos[k++] = cy + corner[b][1]; pos[k++] = cz + corner[b][2];
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    const m = new THREE.LineBasicMaterial({ color: 0xe10600, transparent: true, opacity: 0.25 });
+    this.voxelGrid = new THREE.LineSegments(g, m);
+    this.scene.add(this.voxelGrid);
+  }
+
+  clearVoxelGrid() {
+    if (this.voxelGrid) {
+      this.scene.remove(this.voxelGrid);
+      this.voxelGrid.geometry.dispose();
+      this.voxelGrid = null;
+    }
+  }
+
   // Nearest *visible* point to a screen position, or -1. Robust (no raycaster
   // threshold tuning): projects every point once per click.
   pick(clientX, clientY) {

@@ -40,6 +40,7 @@
       <span class="sep"></span>
       <button data-mode-pick="point" class="toggle active">Point</button>
       <button data-mode-pick="box" class="toggle">Box</button>
+      <button data-mode-pick="voxel" class="toggle">Voxel</button>
       <span class="spacer"></span>
       <span id="status">loading…</span>
     </header>
@@ -75,6 +76,16 @@
         <div class="body">
           <label class="row">Size <input id="psize" type="range" min="1" max="12" value="3" /></label>
           <label class="row"><input id="round" type="checkbox" /> Round points</label>
+        </div>
+      </div>
+
+      <div class="window" id="win-voxel" style="left: 290px; top: 52px; width: 218px; display: none">
+        <div class="titlebar">Voxels</div>
+        <div class="body">
+          <label class="row">Size <input id="vox-size" type="number" min="0.05" step="0.05" value="0.5" /></label>
+          <label class="row"><input id="vox-grid" type="checkbox" checked /> Show grid</label>
+          <label class="row"><input id="vox-empty" type="checkbox" /> Show empty cells</label>
+          <div id="vox-info" class="muted"></div>
         </div>
       </div>
 

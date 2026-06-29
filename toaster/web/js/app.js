@@ -15,6 +15,8 @@ let currentGroup = null;
 let focusGroup = null; // a group to scroll/flash in the Segments window after a re-render
 let topZ = 10;
 let segSpecs = {}; // segmenter name -> [{name, type, default, min, max, step}]
+let voxel = { size: 0.5, showEmpty: false, map: null, centers: new Float32Array(0) };
+const VOXEL_GRID_CAP = 30000; // max cubes to draw / cells to enumerate
 
 const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
 const hex = (c) => "#" + c.map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -215,6 +217,89 @@ const withGroup = (fn) => {
   if (currentGroup != null) fn(currentGroup);
 };
 
+// -- voxel selection mode ---------------------------------------------------
+
+function buildVoxels() {
+  const s = voxel.size;
+  const xyz = cloud.xyz;
+  const n = xyz.length / 3;
+  const map = new Map(); // "ix,iy,iz" -> [point indices]
+  for (let i = 0; i < n; i++) {
+    const key =
+      Math.floor(xyz[i * 3] / s) + "," + Math.floor(xyz[i * 3 + 1] / s) + "," + Math.floor(xyz[i * 3 + 2] / s);
+    let arr = map.get(key);
+    if (!arr) map.set(key, (arr = []));
+    arr.push(i);
+  }
+  voxel.map = map;
+
+  let cells;
+  if (voxel.showEmpty) {
+    cells = allCellsInBBox(s);
+  } else {
+    cells = [];
+    for (const key of map.keys()) {
+      const [ix, iy, iz] = key.split(",").map(Number);
+      cells.push((ix + 0.5) * s, (iy + 0.5) * s, (iz + 0.5) * s);
+    }
+  }
+  voxel.centers = new Float32Array(cells);
+}
+
+function allCellsInBBox(s) {
+  const xyz = cloud.xyz;
+  const n = xyz.length / 3;
+  let lo = [Infinity, Infinity, Infinity];
+  let hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < n; i++)
+    for (let a = 0; a < 3; a++) {
+      const v = xyz[i * 3 + a];
+      if (v < lo[a]) lo[a] = v;
+      if (v > hi[a]) hi[a] = v;
+    }
+  const i0 = lo.map((v) => Math.floor(v / s));
+  const i1 = hi.map((v) => Math.floor(v / s));
+  const total = (i1[0] - i0[0] + 1) * (i1[1] - i0[1] + 1) * (i1[2] - i0[2] + 1);
+  if (total > VOXEL_GRID_CAP) return []; // too many — caller hides the grid
+  const cells = [];
+  for (let i = i0[0]; i <= i1[0]; i++)
+    for (let j = i0[1]; j <= i1[1]; j++)
+      for (let k = i0[2]; k <= i1[2]; k++) cells.push((i + 0.5) * s, (j + 0.5) * s, (k + 0.5) * s);
+  return cells;
+}
+
+function voxelIndicesOf(i) {
+  const s = voxel.size;
+  const xyz = cloud.xyz;
+  const key =
+    Math.floor(xyz[i * 3] / s) + "," + Math.floor(xyz[i * 3 + 1] / s) + "," + Math.floor(xyz[i * 3 + 2] / s);
+  return (voxel.map && voxel.map.get(key)) || [i];
+}
+
+function rebuildVoxels() {
+  if (!cloud.xyz) return;
+  buildVoxels();
+  const count = voxel.centers.length / 3;
+  if (el("vox-grid").checked && count > 0) viewer.setVoxelGrid(voxel.centers, voxel.size);
+  else viewer.clearVoxelGrid();
+  const occupied = voxel.map ? voxel.map.size : 0;
+  let info = `${occupied.toLocaleString()} occupied voxels`;
+  if (count === 0 && el("vox-grid").checked) info += " · grid too large to show";
+  el("vox-info").textContent = info;
+}
+
+function enterVoxelMode() {
+  const w = el("win-voxel");
+  w.style.display = "flex";
+  w.style.zIndex = ++topZ;
+  rebuildVoxels();
+}
+
+function exitVoxelMode() {
+  el("win-voxel").style.display = "none";
+  viewer.clearVoxelGrid();
+}
+
 // -- events -----------------------------------------------------------------
 
 function wire() {
@@ -227,6 +312,16 @@ function wire() {
   el("grp-assign").onclick = () => withGroup((g) => api.groupAssign(g).then(applyState));
   el("grp-suggested").onclick = () => withGroup((g) => api.groupSuggested(g).then(applyState));
   el("grp-suggest-all").onclick = () => api.groupSuggested(null).then(applyState);
+
+  el("vox-size").onchange = (e) => {
+    voxel.size = Math.max(0.05, +e.target.value || 0.5);
+    rebuildVoxels();
+  };
+  el("vox-grid").onchange = rebuildVoxels;
+  el("vox-empty").onchange = (e) => {
+    voxel.showEmpty = e.target.checked;
+    rebuildVoxels();
+  };
 
   el("cls-add").onclick = () => {
     const n = prompt("New class name:");
@@ -353,6 +448,8 @@ function setPickMode(mode) {
     b.classList.toggle("active", b.dataset.modePick === mode);
   });
   viewer.setBoxMode(mode === "box"); // box mode keeps camera on right-drag / wheel
+  if (mode === "voxel") enterVoxelMode();
+  else exitVoxelMode();
 }
 
 function setupPointer() {
@@ -387,13 +484,18 @@ function setupPointer() {
     } else if (!start.moved) {
       const i = viewer.pick(e.clientX, e.clientY);
       if (i >= 0) {
-        // If a grouping is active, remember which segment was clicked so the
-        // Segments window scrolls to and flashes it after the re-render.
-        if (state.grouping) {
-          currentGroup = state.grouping[i];
-          focusGroup = currentGroup;
+        if (pickMode === "voxel") {
+          // Select every point sharing the clicked point's voxel.
+          api.box(voxelIndicesOf(i), modifiers(e)).then(applyState);
+        } else {
+          // If a grouping is active, remember which segment was clicked so the
+          // Segments window scrolls to and flashes it after the re-render.
+          if (state.grouping) {
+            currentGroup = state.grouping[i];
+            focusGroup = currentGroup;
+          }
+          api.pick(i, modifiers(e)).then(applyState);
         }
-        api.pick(i, modifiers(e)).then(applyState);
       }
     }
   });

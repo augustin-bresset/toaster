@@ -661,6 +661,7 @@ function buzz(kind) {
 }
 
 async function act(name) {
+  if (!state) return; // no cloud yet — nothing to assign / undo / save
   if (name === "assign") {
     const n = state ? state.selection.length : 0;
     applyState(await api.assign());
@@ -686,6 +687,7 @@ function clearSelectionIfAny() {
 function onKey(e) {
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
+  if (!state) return; // shortcuts do nothing until a cloud is loaded
   if (e.key === "Enter") act("assign");
   else if (e.key === "Escape") clearSelectionIfAny();
   else if (e.ctrlKey && e.key === "z") act("undo");
@@ -697,6 +699,10 @@ function onKey(e) {
 }
 
 async function runSegmenter() {
+  if (!state) {
+    el("status").textContent = "open a cloud first";
+    return;
+  }
   const n = el("seg-name").value;
   const params = {};
   for (const inp of el("seg-params").querySelectorAll("[data-param]")) {

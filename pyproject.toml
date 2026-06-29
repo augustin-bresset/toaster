@@ -21,8 +21,9 @@ dependencies = [
     "uvicorn[standard]",
     "pywebview",
     # Webview host for the desktop window. On Linux this uses QtWebEngine; for a
-    # fully Qt-free host install system WebKitGTK and drop this.
+    # fully Qt-free host install system WebKitGTK and drop these two.
     "PySide6",
+    "qtpy",  # pywebview's Qt backend imports qtpy to abstract over PySide6/PyQt
 ]
 
 [project.optional-dependencies]

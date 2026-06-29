@@ -46,7 +46,7 @@ where = ["."]
 include = ["toaster*"]
 
 [tool.setuptools.package-data]
-toaster = ["py.typed", "schemas/*.yaml", "web/*.html", "web/*.css", "web/js/*.js"]
+toaster = ["py.typed", "schemas/*.yaml", "web/*.html", "web/*.css", "web/*.svg", "web/*.png", "web/js/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

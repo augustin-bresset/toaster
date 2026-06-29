@@ -10,6 +10,7 @@ plain browser instead.
 from __future__ import annotations
 
 import argparse
+import importlib.resources
 import importlib.util
 import socket
 import sys
@@ -68,7 +69,14 @@ def main(argv: list[str] | None = None) -> int:
     # Pick the backend explicitly so pywebview does not noisily try (and fail)
     # GTK before falling back to Qt when WebKitGTK is not installed.
     gui = "gtk" if importlib.util.find_spec("gi") is not None else "qt"
-    webview.start(gui=gui)  # blocks until the window is closed
+    start_kwargs: dict = {"gui": gui}
+    icon = importlib.resources.files("toaster") / "web" / "icon.png"
+    try:
+        if icon.is_file():
+            start_kwargs["icon"] = str(icon)  # taskbar / window icon
+    except Exception:
+        pass
+    webview.start(**start_kwargs)  # blocks until the window is closed
     server.should_exit = True
     return 0
 

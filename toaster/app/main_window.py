@@ -58,11 +58,17 @@ class MainWindow(QMainWindow):
         )
         self.layers_panel = LayersPanel()
         self.groups_panel = GroupsPanel()
-        self._add_dock("Classes", self.palette)
-        self._add_dock("Display", self.display_panel)
-        self._add_dock("Segmenter", self.segmenter_panel)
-        self._add_dock("Groups", self.groups_panel)
-        self._add_dock("Session", self.layers_panel)
+        # Settings you set-and-leave go on the left; the segmentation workflow
+        # goes on the right as a tab stack so one column never gets too dense.
+        left = Qt.DockWidgetArea.LeftDockWidgetArea
+        self._add_dock("Classes", self.palette, left)
+        self._add_dock("Display", self.display_panel, left)
+        seg = self._add_dock("Segmenter", self.segmenter_panel)
+        grp = self._add_dock("Groups", self.groups_panel)
+        ses = self._add_dock("Session", self.layers_panel)
+        self.tabifyDockWidget(seg, grp)
+        self.tabifyDockWidget(grp, ses)
+        seg.raise_()
 
         self.palette.class_selected.connect(self._on_class_selected)
         self.palette.color_changed.connect(self._on_class_color_changed)
@@ -90,11 +96,12 @@ class MainWindow(QMainWindow):
 
     # -- construction helpers --------------------------------------------
 
-    def _add_dock(self, title: str, widget: QWidget) -> None:
+    def _add_dock(self, title: str, widget: QWidget, area=None) -> QDockWidget:
         dock = QDockWidget(title, self)
         dock.setWidget(widget)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+        self.addDockWidget(area or Qt.DockWidgetArea.RightDockWidgetArea, dock)
         self._docks[title] = dock
+        return dock
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
@@ -364,6 +371,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Segmentation failed", str(exc))
             return
         grouping = self._session.active_grouping
+        self._docks["Groups"].raise_()  # surface the segments that were just made
         self.statusBar().showMessage(f"{segmenter.name}: {grouping.n_groups} groups")
 
     def _on_active_grouping_changed(self, index) -> None:

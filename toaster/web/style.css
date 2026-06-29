@@ -23,6 +23,34 @@ body {
   padding: 6px 10px; background: #000; border-bottom: 2px solid var(--accent);
   box-shadow: 0 2px 14px rgba(225, 6, 0, 0.35); /* heating-element glow */
 }
+
+/* The top neon "bugs": a quick flicker when a point is labelled, and a stronger
+   glitch when a segmenter finishes. Both are theme-aware (use --accent). */
+#toolbar.flicker { animation: neon-flicker 0.45s 1; }
+@keyframes neon-flicker {
+  0%, 100% { filter: none; border-bottom-color: var(--accent); }
+  10% { filter: brightness(2.2); border-bottom-color: #fff; box-shadow: 0 2px 22px var(--accent); }
+  22% { filter: brightness(0.4); border-bottom-color: transparent; box-shadow: none; }
+  38% { filter: brightness(1.8); border-bottom-color: var(--accent); box-shadow: 0 2px 18px var(--accent); }
+  54% { filter: brightness(0.55); border-bottom-color: transparent; box-shadow: none; }
+  72% { filter: brightness(1.3); border-bottom-color: var(--accent); }
+}
+#toolbar.glitch { animation: neon-glitch 0.8s steps(1, end) 1; }
+@keyframes neon-glitch {
+  0%, 100% { filter: none; clip-path: none; border-bottom-color: var(--accent); }
+  6% { filter: brightness(2.6) contrast(1.3); border-bottom-color: #fff; box-shadow: 0 2px 28px var(--accent); }
+  13% { filter: brightness(0.25); border-bottom-color: transparent; box-shadow: none; clip-path: inset(0 0 45% 0); }
+  21% { filter: brightness(2.1); border-bottom-color: var(--accent); clip-path: inset(40% 0 0 0); }
+  30% { filter: brightness(0.4); border-bottom-color: transparent; box-shadow: none; clip-path: none; }
+  40% { filter: brightness(1.9); border-bottom-color: var(--accent); box-shadow: 0 2px 22px var(--accent); }
+  50% { filter: brightness(0.5); border-bottom-color: transparent; box-shadow: none; }
+  61% { filter: brightness(1.8); border-bottom-color: var(--accent); clip-path: inset(0 0 25% 0); }
+  72% { filter: brightness(0.7); clip-path: none; }
+  86% { filter: brightness(1.3); border-bottom-color: var(--accent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #toolbar.flicker, #toolbar.glitch { animation: none; }
+}
 .logo { display: inline-flex; align-items: center; gap: 8px; color: var(--fg); }
 .logo b { letter-spacing: 4px; font-weight: 800; font-size: 15px; }
 
@@ -59,10 +87,14 @@ body[data-theme="arcade"] .logo-art[data-logo="arcade"] { display: inline-flex; 
 .group { display: inline-flex; gap: 4px; }
 
 /* -- loading bar -- */
-#loading { height: 3px; background: #000; overflow: hidden; position: relative; z-index: 100; }
-#loading .bar { width: 28%; height: 100%; background: var(--accent); transform: translateX(-130%); }
-#loading.on .bar { animation: load 0.9s linear infinite; box-shadow: 0 0 12px 2px var(--accent); }
-@keyframes load { from { transform: translateX(-130%); } to { transform: translateX(460%); } }
+#loading { height: 3px; background: transparent; overflow: hidden; position: relative; z-index: 100; }
+#loading .bar {
+  width: 34%; height: 100%; transform: translateX(-130%); border-radius: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent) 65%, #fff);
+  box-shadow: 0 0 14px 2px var(--accent);
+}
+#loading.on .bar { animation: load 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+@keyframes load { from { transform: translateX(-130%); } to { transform: translateX(420%); } }
 
 /* Heating element: a glowing coil that breathes along the bottom edge. */
 body::after {

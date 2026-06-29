@@ -518,11 +518,23 @@ function setLoading(on) {
   el("loading").classList.toggle("on", on);
 }
 
+// Make the top neon "bug": a quick flicker on a label, a bigger glitch when a
+// segmenter finishes. kind = "flicker" | "glitch".
+function buzz(kind) {
+  const tb = el("toolbar");
+  tb.classList.remove("flicker", "glitch");
+  void tb.offsetWidth; // restart the animation if it's mid-run
+  tb.classList.add(kind);
+}
+
 async function act(name) {
   if (name === "assign") {
     const n = state ? state.selection.length : 0;
     applyState(await api.assign());
-    if (n > 0) scorePop(n * 10); // arcade score (no-op in other themes)
+    if (n > 0) {
+      buzz("flicker"); // the neon stutters each time you stamp a label
+      scorePop(n * 10); // arcade score (no-op in other themes)
+    }
   } else if (name === "undo") applyState(await api.undo());
   else if (name === "redo") applyState(await api.redo());
   else if (name === "save") {
@@ -578,6 +590,7 @@ async function runSegmenter() {
         : theme() === "arcade"
           ? `LEVEL UP! ${detail}`
           : `✓ ${detail}`;
+    buzz("glitch"); // the neon glitches hard when the run lands
     toastPop();
     levelUp();
   } catch (e) {

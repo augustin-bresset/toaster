@@ -1,7 +1,8 @@
 """Extra clustering segmenters (scikit-learn + a small numpy k-medoids).
 
-Heavy / quadratic methods (agglomerative, mean-shift, k-medoids) refuse very
-large inputs with a clear message — run them on a selection instead.
+Heavy / quadratic methods (k-medoids, agglomerative, mean-shift, OPTICS) stay
+usable on big clouds by clustering a bounded random subsample and assigning every
+remaining point to its nearest cluster centroid (see ``_assign_subsampled``).
 """
 
 from __future__ import annotations
@@ -116,6 +117,7 @@ class OPTICSSegmenter:
 
     name = "optics"
     PARAMS = [Param("min_samples", "int", 10, 2, 1000, 1)]
+    MAX_POINTS = 8000
 
     def __init__(self, min_samples: int = 10) -> None:
         self.min_samples = int(min_samples)
@@ -126,7 +128,11 @@ class OPTICSSegmenter:
         xyz, indices = resolve_points(cloud, selection)
         if len(xyz) <= self.min_samples:
             return all_noise(indices, cloud.n, source=self.name)
-        labels = OPTICS(min_samples=self.min_samples).fit_predict(xyz)
+        labels = _assign_subsampled(
+            np.asarray(xyz, dtype=np.float64),
+            lambda x: OPTICS(min_samples=self.min_samples).fit_predict(x),
+            self.MAX_POINTS,
+        )
         return scatter(labels, indices, cloud.n, source=self.name,
                        params={"min_samples": self.min_samples})  # fmt: skip
 

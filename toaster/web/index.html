@@ -76,6 +76,7 @@
         <b>TOASTER</b>
       </span>
       <span class="sep"></span>
+      <button id="open-file" title="Open a point cloud from a folder">Open</button>
       <button data-act="assign">Assign</button>
       <button data-act="undo">Undo</button>
       <button data-act="redo">Redo</button>
@@ -171,6 +172,17 @@
             Assign checked
           </button>
           <div class="muted" style="padding: 4px 2px">Check the segments you want, then Assign — or double-click one to label it.</div>
+        </div>
+      </div>
+
+      <div class="window" id="win-open" style="left: 320px; top: 70px; width: 480px; display: none">
+        <div class="titlebar">
+          Open a point cloud
+          <button class="x" data-close="win-open">×</button>
+        </div>
+        <div class="body">
+          <div id="open-path" class="muted" style="padding: 2px 2px 6px; word-break: break-all"></div>
+          <div id="open-list" class="list" style="max-height: 380px; overflow: auto"></div>
         </div>
       </div>
 

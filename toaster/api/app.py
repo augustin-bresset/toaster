@@ -119,6 +119,10 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     def state():
         return service.state()
 
+    @app.get("/api/browse")
+    def browse(path: str | None = None):
+        return service.browse(path)
+
     # -- lifecycle / selection / annotation --
     @app.post("/api/open")
     def open_cloud(body: OpenBody):

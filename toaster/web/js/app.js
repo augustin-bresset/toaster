@@ -133,7 +133,10 @@ async function boot() {
   wire();
   initTheme();
   if (meta.n > 0) await loadCloud();
-  else el("status").textContent = "no cloud — start: toaster-web <file>";
+  else {
+    el("status").textContent = "no cloud — pick one";
+    openBrowser(); // launched without a file → let the user find one in a folder
+  }
 }
 
 // Render the parameter fields for the selected segmenter from its spec.
@@ -163,6 +166,65 @@ async function loadCloud() {
   for (const [k, v] of Object.entries(c.features)) cloud.features[k] = decodeArray(v);
   viewer.setCloud(cloud.xyz);
   applyState(await api.state());
+}
+
+// -- file browser (Open without a path, then find the cloud in a folder) ----
+
+let openDir = null; // the folder currently shown in the browser
+
+async function openBrowser(path) {
+  let data;
+  try {
+    data = await api.browse(path);
+  } catch (e) {
+    el("status").textContent = "✗ " + e.message;
+    return;
+  }
+  openDir = data.path;
+  el("open-path").textContent = data.path;
+  const list = el("open-list");
+  list.innerHTML = "";
+  if (data.parent) list.appendChild(browseRow("📁  ..", () => openBrowser(data.parent)));
+  for (const e of data.entries) {
+    if (e.is_dir) list.appendChild(browseRow("📁  " + e.name, () => openBrowser(e.path)));
+    else if (e.openable) list.appendChild(browseRow("📄  " + e.name, () => openFile(e.path)));
+    else list.appendChild(browseRow("•  " + e.name, null)); // unsupported format
+  }
+  if (list.children.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "muted";
+    empty.style.padding = "6px";
+    empty.textContent = "empty folder";
+    list.appendChild(empty);
+  }
+  const w = el("win-open");
+  w.style.display = "flex";
+  w.style.zIndex = ++topZ;
+}
+
+function browseRow(label, onClick) {
+  const row = document.createElement("div");
+  row.className = "item";
+  row.textContent = label;
+  if (onClick) row.onclick = onClick;
+  else row.style.opacity = "0.4";
+  return row;
+}
+
+async function openFile(path) {
+  el("status").textContent = "opening…";
+  try {
+    await api.open(path); // starts a fresh server-side session
+    el("win-open").style.display = "none";
+    el("win-groups").style.display = "none";
+    currentGroup = null;
+    clearBox();
+    await loadCloud();
+    if (pickMode === "voxel") rebuildVoxels();
+    el("status").textContent = "opened " + (path.split("/").pop() || path);
+  } catch (e) {
+    el("status").textContent = "✗ " + e.message;
+  }
 }
 
 function applyState(raw) {
@@ -416,6 +478,7 @@ function wire() {
   el("round").onchange = (e) => viewer.setRound(e.target.checked);
   el("seg-name").onchange = () => renderSegParams(el("seg-name").value);
   el("seg-run").onclick = runSegmenter;
+  el("open-file").onclick = () => openBrowser(openDir);
   el("grp-showall").onclick = () => api.groupsShowAll().then(applyState);
   el("grp-hideall").onclick = () => api.groupsHideAll().then(applyState);
   // Assign the active class to every checked (visible) segment at once.

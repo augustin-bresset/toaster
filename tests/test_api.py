@@ -129,3 +129,23 @@ def test_pick_assign_undo(client):
     assert decode_array(after["labels"])[5] == 2
     back = client.post("/api/undo").json()
     assert decode_array(back["labels"])[5] == 0
+
+
+def test_browse_lists_dir_and_flags_openable(client, tmp_path):
+    (tmp_path / "notes.txt").write_text("hi")
+    (tmp_path / "sub").mkdir()
+    data = client.get("/api/browse", params={"path": str(tmp_path)}).json()
+    by = {e["name"]: e for e in data["entries"]}
+    assert by["scan.bin"]["openable"] is True  # the cloud .bin from the fixture
+    assert by["notes.txt"]["openable"] is False  # unsupported format
+    assert by["sub"]["is_dir"] and by["sub"]["openable"]
+    assert ".bin" in data["extensions"]
+
+
+def test_browse_defaults_to_open_cloud_folder(client):
+    data = client.get("/api/browse").json()  # no path -> the open cloud's folder
+    assert any(e["name"] == "scan.bin" for e in data["entries"])
+
+
+def test_browse_bad_dir_is_400(client):
+    assert client.get("/api/browse", params={"path": "/no/such/dir/zzz"}).status_code == 400

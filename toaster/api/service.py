@@ -74,6 +74,38 @@ class AnnotationService:
             "source": str(self._session.cloud.source) if self._session else None,
         }
 
+    def browse(self, path: str | None = None) -> dict[str, Any]:
+        """List a directory (folders first), flagging which files Toaster can open.
+
+        ``path`` ``None`` starts from the open cloud's folder, else the working
+        directory — so launching ``toaster-web`` with no file lands you somewhere
+        useful. Dotfiles are hidden. Local use only (server binds to 127.0.0.1).
+        """
+        from toaster.io import supported_extensions
+
+        exts = set(supported_extensions())
+        base = (Path(path).expanduser() if path else self._start_dir()).resolve()
+        if not base.is_dir():
+            raise ValueError(f"not a directory: {base}")
+        entries = []
+        for child in sorted(base.iterdir(), key=lambda c: (not _is_dir(c), c.name.lower())):
+            if child.name.startswith("."):
+                continue
+            is_dir = _is_dir(child)
+            entries.append({
+                "name": child.name, "path": str(child), "is_dir": is_dir,
+                "openable": is_dir or child.suffix.lower() in exts,
+            })  # fmt: skip
+        parent = str(base.parent) if base.parent != base else None
+        return {"path": str(base), "parent": parent, "entries": entries,
+                "extensions": sorted(exts)}  # fmt: skip
+
+    def _start_dir(self) -> Path:
+        """Where the file browser opens by default."""
+        if self._session is not None and self._session.cloud.source is not None:
+            return Path(self._session.cloud.source).expanduser().resolve().parent
+        return Path.cwd()
+
     def cloud(self) -> dict[str, Any]:
         """The geometry (and feature channels), encoded for the client."""
         ctl = self._ctl()
@@ -191,3 +223,10 @@ class AnnotationService:
 
 def _mods(modifiers: list[str] | None) -> frozenset:
     return frozenset(modifiers or ())
+
+
+def _is_dir(p: Path) -> bool:
+    try:
+        return p.is_dir()
+    except OSError:  # e.g. a broken symlink or permission error
+        return False

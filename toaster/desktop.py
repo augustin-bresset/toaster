@@ -49,12 +49,22 @@ def _serve_in_background(app, port: int):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="toaster", description="Toaster — point-cloud labeler.")
     parser.add_argument("path", nargs="?", help="point cloud to open on startup")
+    parser.add_argument(
+        "--plugin",
+        action="append",
+        default=[],
+        metavar="MODULE",
+        help="import a module before starting so its custom segmenters/loaders register "
+        "(repeatable)",
+    )
     args = parser.parse_args(argv)
 
     import webview
 
     from .api.app import create_app
 
+    for module in args.plugin:
+        importlib.import_module(module)
     app = create_app()
     if args.path:
         app.state.service.open_cloud(args.path)

@@ -7,39 +7,38 @@ All notable changes to Toaster are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- Core domain library (`toaster.core`): `PointCloud`, `LabelSchema`, `Selection`,
-  `Grouping`, `EditHistory`/`AnnotationController`, `Session`. Headless,
-  numpy-only, fully typed.
-- Pluggable IO loaders (`.ply`, `.bin`, `.las/.laz`, `.pcd`) with a registry and
-  an optional `apairo` loader.
-- Pluggable segmenters (`Segmenter` protocol + registry): DBSCAN, HDBSCAN, and
-  generic function/model wrappers.
-- PyVista-based interactive viewer behind a backend-agnostic `Viewer` protocol.
-- Qt desktop application with point/box selection, class palette, undo/redo and
-  label persistence.
-- Editable label schema from the UI: add, rename, recolour and remove classes in
-  the *Classes* panel (`LabelSchema.add_class`/`rename`/`remove`), plus
-  *File ▸ Load/Save schema…* (`LabelSchema.to_yaml`).
-- The labelling schema is now saved beside the cloud
-  (`<cloud>.toaster.schema.yaml`) and restored on reopen, so a cloud's classes
-  come back exactly as left.
-- *Panels* menu with a checkable entry per dock, so a closed panel can be
-  reopened (previously it was gone until restart).
 
-### Fixed
-- Labelling is now discoverable and works: an **Assign** toolbar button / *Edit ▸
-  Assign* / **Enter** labels the selection with the active class. Number keys map
-  to the class *id* shown in the panel (so `1` labels class 1, not "unlabeled"),
-  and a new session adopts the panel's highlighted class as the brush.
-- Running a clusterer on a one-point selection no longer crashes (sklearn aborts
-  on a single sample): segmenters return an empty grouping, and the window warns
-  on a too-small selection instead of failing.
-- Rotating the camera no longer snaps the view back to the cloud: the selection
-  overlay and recolours keep the current camera instead of re-framing.
-- Left-drag now orbits cleanly without selecting; a point is picked only on a
-  stationary left click.
-- On a Wayland session, Qt is routed through XWayland (`xcb`) so VTK gets a real
-  X11 window instead of aborting with `BadWindow`.
+- **Domain core** (`toaster.core`): `PointCloud`, `LabelSchema`, `Selection`,
+  `Grouping`, `EditHistory` / `AnnotationController`, `Session` — headless,
+  numpy-only, fully typed and unit-tested.
+- **Pluggable IO** loaders behind a registry: `.ply`, `.bin` (KITTI-style),
+  `.las` / `.laz`, `.pcd`, plus an optional `apairo` loader.
+- **Pluggable segmenters** behind a registry (`Segmenter` protocol): clustering
+  (`dbscan`, `hdbscan`, `kmeans`, `kmedoids`, `agglomerative`, `optics`,
+  `meanshift`) and ground detection (`ransac_ground`, `ground_grid`, `csf`).
+  Heavy / quadratic methods stay usable on large clouds by clustering a bounded
+  subsample and assigning the rest to the nearest cluster. `register_model`
+  wraps any `predict` callable as a named segmenter in one call.
+- **Web app** — a FastAPI service (`toaster-web`) and a vanilla Three.js
+  front-end (no build step). The browser receives only numpy arrays and a flat
+  snapshot; all colouring happens client-side.
+- **Native desktop app** (`toaster`) — the same web UI in a pywebview window.
+- **Point / Box / Voxel** selection modes; **double-click (left or right) to
+  label** a cluster, point, voxel, or a drawn box in one gesture; Shift/Ctrl to
+  add/subtract; undo/redo; labels saved beside the cloud and restored on reopen.
+- **Segments** panel: per-group visibility (hidden groups grey out while already
+  labelled points keep their class colour), **Assign checked** to label every
+  visible group at once, and discard-on-close.
+- **File browser**: launch with no path and browse the filesystem in-app — or
+  type a path with **Tab**-completion.
+- **Classes** manager (add / rename / recolour / remove) and display modes
+  (Labels / Grouping / Intensity / Height).
+- **Themes** (Toaster, Café Toaster, Arcade Quest), each with its own animated
+  logo, plus a neon-flicker on label and a glitch on a finished segmentation.
+- `--plugin MODULE` on `toaster` / `toaster-web` to import custom
+  segmenters/loaders at launch.
+- Packaging: `py.typed`, MIT `LICENSE`, GitHub Actions CI (lint + format + tests
+  on Python 3.11 / 3.12), `CONTRIBUTING.md`, a runnable example
+  (`examples/make_sample.py`) and a Docker image + deploy guide.
 
-## [0.1.0] - unreleased
-- Initial scaffolding.
+[Unreleased]: https://github.com/augustin-bresset/toaster/commits/main

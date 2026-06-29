@@ -40,7 +40,10 @@ toaster = "toaster.desktop:main"
 toaster-web = "toaster.api.server:main"
 
 [project.urls]
-Homepage = "https://github.com/augustin-b/toaster"
+Homepage = "https://github.com/augustin-bresset/toaster"
+Repository = "https://github.com/augustin-bresset/toaster"
+Issues = "https://github.com/augustin-bresset/toaster/issues"
+Changelog = "https://github.com/augustin-bresset/toaster/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]

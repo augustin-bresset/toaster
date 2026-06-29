@@ -404,10 +404,16 @@ async function act(name) {
   }
 }
 
+// Clear the current selection (no-op / no round-trip if nothing is selected).
+function clearSelectionIfAny() {
+  if (state && state.selection.length > 0) api.clearSelection().then(applyState);
+}
+
 function onKey(e) {
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
   if (e.key === "Enter") act("assign");
+  else if (e.key === "Escape") clearSelectionIfAny();
   else if (e.ctrlKey && e.key === "z") act("undo");
   else if (e.ctrlKey && (e.key === "y" || (e.shiftKey && e.key === "Z"))) act("redo");
   else if (/^[0-9]$/.test(e.key)) {
@@ -477,26 +483,33 @@ function setupPointer() {
     const start = down;
     down = null;
     rubber.style.display = "none";
-    if (pickMode === "box") {
+    const mods = modifiers(e);
+
+    // Box drag -> frustum select.
+    if (pickMode === "box" && start.moved) {
       const r = dom.getBoundingClientRect();
       const idx = viewer.pickBox(start.x - r.left, start.y - r.top, e.clientX - r.left, e.clientY - r.top);
-      if (idx.length) api.box(idx, modifiers(e)).then(applyState);
-    } else if (!start.moved) {
-      const i = viewer.pick(e.clientX, e.clientY);
-      if (i >= 0) {
-        if (pickMode === "voxel") {
-          // Select every point sharing the clicked point's voxel.
-          api.box(voxelIndicesOf(i), modifiers(e)).then(applyState);
-        } else {
-          // If a grouping is active, remember which segment was clicked so the
-          // Segments window scrolls to and flashes it after the re-render.
-          if (state.grouping) {
-            currentGroup = state.grouping[i];
-            focusGroup = currentGroup;
-          }
-          api.pick(i, modifiers(e)).then(applyState);
-        }
+      if (idx.length) api.box(idx, mods).then(applyState);
+      return;
+    }
+    if (start.moved) return; // a drag = orbit, never a selection
+
+    // A click: hit a point, or — on empty space with no modifier — deselect.
+    const i = viewer.pick(e.clientX, e.clientY);
+    if (i < 0) {
+      if (mods.length === 0) clearSelectionIfAny();
+      return;
+    }
+    if (pickMode === "voxel") {
+      api.box(voxelIndicesOf(i), mods).then(applyState); // whole voxel
+    } else {
+      // If a grouping is active, remember which segment was clicked so the
+      // Segments window scrolls to and flashes it after the re-render.
+      if (state.grouping) {
+        currentGroup = state.grouping[i];
+        focusGroup = currentGroup;
       }
+      api.pick(i, mods).then(applyState);
     }
   });
 }

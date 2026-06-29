@@ -25,4 +25,4 @@ venv/
 .vscode/
 
 # CSF ground filter debug dump
-cloth_nodes.txt
+cloth_nodes.txtexamples/sample.bin

@@ -15,6 +15,7 @@ from .apairo_loader import ApairoFrames
 from .base import Loader
 from .bin_loader import BinLoader
 from .las_loader import LasLoader
+from .npy_loader import NpyLoader
 from .pcd_loader import PcdLoader
 from .ply_loader import PlyLoader
 
@@ -66,6 +67,7 @@ register_loader(PlyLoader())
 register_loader(BinLoader())
 register_loader(LasLoader())
 register_loader(PcdLoader())
+register_loader(NpyLoader())
 
 # Prefer Open3D for PCD when available (it also decodes binary_compressed);
 # leave .ply to the lighter built-in loader. Detected without importing the

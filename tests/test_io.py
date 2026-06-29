@@ -8,7 +8,7 @@ from toaster.io import load_cloud, supported_extensions
 
 def test_supported_extensions_include_builtins():
     exts = supported_extensions()
-    assert {".ply", ".bin", ".las", ".laz", ".pcd"} <= set(exts)
+    assert {".ply", ".bin", ".las", ".laz", ".pcd", ".npy"} <= set(exts)
 
 
 def test_bin_roundtrip(tmp_path):
@@ -71,6 +71,69 @@ def test_las_roundtrip(tmp_path):
     cloud = load_cloud(path)
     assert cloud.n == 3
     assert np.allclose(cloud.xyz[1], [1.0, 1.0, 0.5], atol=1e-3)
+
+
+def test_npy_xyz(tmp_path):
+    pts = np.array([[0, 0, 0], [1, 2, 3]], dtype=np.float32)
+    path = tmp_path / "scan.npy"
+    np.save(path, pts)
+    cloud = load_cloud(path)
+    assert cloud.n == 2
+    assert np.allclose(cloud.xyz, pts)
+    assert cloud.features == {}
+    assert cloud.source == path
+
+
+def test_npy_xyz_intensity(tmp_path):
+    pts = np.array([[0, 0, 0, 0.1], [1, 2, 3, 0.5]], dtype=np.float32)
+    path = tmp_path / "scan.npy"
+    np.save(path, pts)
+    cloud = load_cloud(path)
+    assert np.allclose(cloud.xyz, pts[:, :3])
+    assert np.allclose(cloud.features["intensity"], pts[:, 3])
+
+
+def test_npy_rgb_0_255(tmp_path):
+    pts = np.array([[0, 0, 0, 255, 0, 0], [1, 1, 1, 0, 128, 255]], dtype=np.float32)
+    path = tmp_path / "scan.npy"
+    np.save(path, pts)
+    cloud = load_cloud(path)
+    rgb = cloud.features["rgb"]
+    assert rgb.dtype == np.uint8
+    assert rgb.tolist() == [[255, 0, 0], [0, 128, 255]]
+
+
+def test_npy_rgb_0_1_scaled_to_uint8(tmp_path):
+    pts = np.array([[0, 0, 0, 1.0, 0.0, 0.0], [1, 1, 1, 0.0, 0.5, 1.0]], dtype=np.float32)
+    path = tmp_path / "scan.npy"
+    np.save(path, pts)
+    cloud = load_cloud(path)
+    rgb = cloud.features["rgb"]
+    assert rgb.dtype == np.uint8
+    assert rgb[0].tolist() == [255, 0, 0]
+
+
+def test_npy_normals_detected_by_negative_values(tmp_path):
+    pts = np.array([[0, 0, 0, 0.0, 0.0, -1.0], [1, 1, 1, 1.0, 0.0, 0.0]], dtype=np.float32)
+    path = tmp_path / "scan.npy"
+    np.save(path, pts)
+    cloud = load_cloud(path)
+    assert "normals" in cloud.features
+    assert cloud.features["normals"].dtype == np.float32
+
+
+def test_npy_bad_shape_raises(tmp_path):
+    path = tmp_path / "scan.npy"
+    np.save(path, np.zeros((4, 5), dtype=np.float32))
+    with pytest.raises(ValueError):
+        load_cloud(path)
+
+
+def test_npy_structured_array_raises(tmp_path):
+    path = tmp_path / "scan.npy"
+    np.save(path, np.zeros(3, dtype=[("x", "f4"), ("y", "f4"), ("z", "f4")]))
+    with pytest.raises(ValueError):
+        load_cloud(path)
 
 
 def test_unknown_extension_raises(tmp_path):

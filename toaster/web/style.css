@@ -125,6 +125,67 @@ main { flex: 1; position: relative; min-height: 0; overflow: hidden; }
 .kv .count { margin-left: auto; color: var(--muted); font-family: ui-monospace, monospace; }
 .muted { color: var(--muted); }
 
+#theme { padding: 3px 4px; }
+
+/* A toast that jumps up when a grouping is produced (Pixel Breakfast). */
+.toast-pop {
+  position: fixed; left: 50%; top: 60%; font-size: 54px; transform: translateX(-50%);
+  pointer-events: none; z-index: 200; animation: toastjump 1s ease-out forwards;
+}
+@keyframes toastjump {
+  0% { transform: translate(-50%, 44px) scale(0.6); opacity: 0; }
+  30% { transform: translate(-50%, -36px) scale(1.12); opacity: 1; }
+  100% { transform: translate(-50%, -94px) scale(1); opacity: 0; }
+}
+
+/* ===== Themes (default = Toaster, set in :root above) ===== */
+
+/* Pixel Breakfast — beige / orange / brown, pixel font, bread-ish, kitchen msgs */
+body[data-theme="breakfast"] {
+  --bg: #efe0bd; --panel: #f7edd3; --line: #c69a5e; --fg: #523218;
+  --muted: #8c6a40; --accent: #e07b22; --accent-dim: #b35a12; --glow: none;
+  font-family: "VT323", monospace; font-size: 15px;
+  cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><line x1='4' y1='4' x2='14' y2='14' stroke='%237a5a2e' stroke-width='3' stroke-linecap='round'/><rect x='12' y='13' width='13' height='10' rx='2.5' fill='%23d2d2d2' stroke='%237a5a2e' stroke-width='1.5'/><line x1='16' y1='16' x2='22' y2='16' stroke='%23999999' stroke-width='1'/><line x1='16' y1='19' x2='22' y2='19' stroke='%23999999' stroke-width='1'/></svg>") 4 4, auto;
+}
+body[data-theme="breakfast"] #toolbar { box-shadow: none; }
+body[data-theme="breakfast"] .logo b { font-family: "Press Start 2P", monospace; font-size: 11px; }
+body[data-theme="breakfast"] button {
+  background: #e9c98c; border-color: #b5824a; color: #4a2f15;
+  border-radius: 11px 14px 11px 14px; text-transform: none; letter-spacing: 0;
+}
+body[data-theme="breakfast"] button:hover { background: #f1d6a0; color: #3a2410; border-color: #8a5e2c; }
+body[data-theme="breakfast"] button.primary { background: var(--accent); color: #2a1605; border-color: var(--accent-dim); box-shadow: none; }
+body[data-theme="breakfast"] .titlebar { background: linear-gradient(#f6ecd2, #e7d2a4); color: #4a2f15; box-shadow: none; }
+body[data-theme="breakfast"] .window { box-shadow: 4px 4px 0 rgba(120, 80, 30, 0.3); }
+body[data-theme="breakfast"] .item.active { color: #2a1605; }
+body[data-theme="breakfast"] input[type="number"], body[data-theme="breakfast"] select { background: #fbf3df; color: #4a2f15; border-color: #b5824a; }
+body[data-theme="breakfast"]::after { box-shadow: 0 0 14px 2px rgba(224, 123, 34, 0.5); }
+
+/* Diner — retro chrome + neon (cherry red / teal) */
+body[data-theme="diner"] {
+  --bg: #15181f; --panel: #1d2330; --line: #3a4a5c; --fg: #f6f1e3;
+  --muted: #9fb0c0; --accent: #ff3f6e; --accent-dim: #b32b4c;
+  --glow: 0 0 8px rgba(255, 63, 110, 0.6), 0 0 18px rgba(46, 197, 182, 0.25);
+}
+body[data-theme="diner"] #toolbar { box-shadow: 0 2px 14px rgba(255, 63, 110, 0.35); }
+body[data-theme="diner"] .logo b { text-shadow: 0 0 10px rgba(255, 63, 110, 0.8); }
+body[data-theme="diner"] .titlebar { background: linear-gradient(#2a3344, #161c27); box-shadow: 0 3px 12px -3px rgba(255, 63, 110, 0.6); }
+body[data-theme="diner"] button:hover { color: #2ec5b6; border-color: #2ec5b6; }
+body[data-theme="diner"]::after { background: #2ec5b6; box-shadow: 0 0 20px 3px rgba(46, 197, 182, 0.6); }
+
+/* Arcade — near-black, gold / red, pixel font */
+body[data-theme="arcade"] {
+  --bg: #050507; --panel: #0e0e14; --line: #2a2230; --fg: #ffe08a;
+  --muted: #b08a3a; --accent: #ffcc00; --accent-dim: #c79a00; --glow: 0 0 8px rgba(255, 204, 0, 0.6);
+  font-family: "VT323", monospace; font-size: 15px;
+}
+body[data-theme="arcade"] #toolbar { box-shadow: 0 2px 14px rgba(255, 204, 0, 0.3); }
+body[data-theme="arcade"] .logo b { font-family: "Press Start 2P", monospace; font-size: 11px; color: #ff3b3b; text-shadow: 0 0 8px #ff3b3b; }
+body[data-theme="arcade"] button { text-transform: none; letter-spacing: 0; }
+body[data-theme="arcade"] button.primary { color: #1a1400; }
+body[data-theme="arcade"] .titlebar { color: var(--accent); text-shadow: 0 0 6px rgba(255, 204, 0, 0.7); box-shadow: 0 3px 10px -3px rgba(255, 204, 0, 0.5); }
+body[data-theme="arcade"]::after { box-shadow: 0 0 16px 2px rgba(255, 204, 0, 0.6); }
+
 #rubber {
   position: fixed; border: 2px solid var(--accent);
   background: rgba(225, 6, 0, 0.15); pointer-events: none; display: none; z-index: 50;

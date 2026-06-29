@@ -115,6 +115,9 @@ export class Viewer {
   setRound(on) {
     this.material.uniforms.uRound.value = on ? 1 : 0;
   }
+  setBackground(hex) {
+    this.scene.background = new THREE.Color(hex);
+  }
   setControlsEnabled(on) {
     this.controls.enabled = on;
   }

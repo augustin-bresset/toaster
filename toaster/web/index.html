@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>TOASTER</title>
     <link rel="icon" type="image/svg+xml" href="icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="style.css" />
     <script type="importmap">
       {
@@ -42,6 +48,13 @@
       <button data-mode-pick="box" class="toggle">Box</button>
       <button data-mode-pick="voxel" class="toggle">Voxel</button>
       <span class="spacer"></span>
+      <select id="theme" title="Theme">
+        <option value="toaster">Toaster</option>
+        <option value="breakfast">Pixel Breakfast</option>
+        <option value="diner">Diner</option>
+        <option value="arcade">Arcade</option>
+      </select>
+      <span class="sep"></span>
       <span id="status">loading…</span>
     </header>
     <div id="loading"><div class="bar"></div></div>

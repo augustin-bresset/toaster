@@ -18,6 +18,45 @@ let segSpecs = {}; // segmenter name -> [{name, type, default, min, max, step}]
 let voxel = { size: 0.5, showEmpty: false, map: null, centers: new Float32Array(0) };
 const VOXEL_GRID_CAP = 30000; // max cubes to draw / cells to enumerate
 
+// -- themes ------------------------------------------------------------------
+
+const THEME_BG = { toaster: 0x1f2430, breakfast: 0xe3cfa0, diner: 0x15181f, arcade: 0x050507 };
+
+function applyTheme(name) {
+  if (!THEME_BG[name]) name = "toaster";
+  document.body.dataset.theme = name;
+  el("theme").value = name;
+  try {
+    localStorage.setItem("toaster-theme", name);
+  } catch {
+    /* private mode */
+  }
+  viewer.setBackground(THEME_BG[name]);
+}
+
+function initTheme() {
+  let saved = "toaster";
+  try {
+    saved = localStorage.getItem("toaster-theme") || "toaster";
+  } catch {
+    /* ignore */
+  }
+  applyTheme(saved);
+  el("theme").onchange = () => applyTheme(el("theme").value);
+}
+
+const isKitchen = () => document.body.dataset.theme === "breakfast";
+
+// A little toast jumps out when a grouping is produced (Pixel Breakfast).
+function toastPop() {
+  if (!isKitchen()) return;
+  const t = document.createElement("div");
+  t.className = "toast-pop";
+  t.textContent = "🍞";
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1000);
+}
+
 const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
 const hex = (c) => "#" + c.map((x) => x.toString(16).padStart(2, "0")).join("");
 const modifiers = (e) => [e.shiftKey && "shift", e.ctrlKey && "ctrl"].filter(Boolean);
@@ -32,6 +71,7 @@ async function boot() {
   renderSegParams(el("seg-name").value);
   buildModes();
   wire();
+  initTheme();
   if (meta.n > 0) await loadCloud();
   else el("status").textContent = "no cloud — start: toaster-web <file>";
 }
@@ -441,9 +481,11 @@ async function runSegmenter() {
     showGroupsWindow();
     const dt = ((performance.now() - t0) / 1000).toFixed(1);
     const g = state.snapshot.active_grouping;
-    el("status").textContent = g ? `✓ ${g.source}: ${g.n_groups} segments · ${dt}s` : "✓ done";
+    const detail = g ? `${g.source}: ${g.n_groups} segments · ${dt}s` : "done";
+    el("status").textContent = isKitchen() ? `🍞 Perfectly toasted — ${detail}` : `✓ ${detail}`;
+    toastPop();
   } catch (e) {
-    el("status").textContent = "✗ segmentation failed: " + e.message;
+    el("status").textContent = isKitchen() ? `🔥 Burnt! ${e.message}` : "✗ segmentation failed: " + e.message;
   } finally {
     setLoading(false);
     btn.disabled = false;

@@ -429,15 +429,26 @@ async function runSegmenter() {
     const v = +inp.value;
     params[inp.dataset.param] = inp.dataset.ptype === "int" ? Math.round(v) : v;
   }
+  const btn = el("seg-run");
+  btn.disabled = true;
+  btn.classList.add("busy");
+  btn.textContent = "Running…";
   el("status").textContent = `running ${n}…`;
   setLoading(true);
+  const t0 = performance.now();
   try {
     applyState(await api.segment(n, params, el("seg-scope").checked));
     showGroupsWindow();
+    const dt = ((performance.now() - t0) / 1000).toFixed(1);
+    const g = state.snapshot.active_grouping;
+    el("status").textContent = g ? `✓ ${g.source}: ${g.n_groups} segments · ${dt}s` : "✓ done";
   } catch (e) {
-    el("status").textContent = "segmentation failed: " + e.message;
+    el("status").textContent = "✗ segmentation failed: " + e.message;
   } finally {
     setLoading(false);
+    btn.disabled = false;
+    btn.classList.remove("busy");
+    btn.textContent = "Run";
   }
 }
 

@@ -61,6 +61,9 @@ select, input[type="number"] {
 }
 input[type="range"] { accent-color: var(--accent); }
 input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
+button:disabled { cursor: progress; }
+button.busy { animation: busy 0.8s ease-in-out infinite; }
+@keyframes busy { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
 /* -- viewport + floating windows -- */
 main { flex: 1; position: relative; min-height: 0; overflow: hidden; }

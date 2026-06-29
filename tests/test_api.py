@@ -78,6 +78,26 @@ def test_group_visibility_in_state(client):
     assert all(s["visible"] for s in shown["snapshot"]["segments"])
 
 
+def test_class_editing_endpoints(client):
+    s = client.post("/api/class/add", json={"name": "tree", "color": "#0a0b0c"}).json()
+    new = max(c["id"] for c in s["snapshot"]["classes"])
+    assert s["snapshot"]["active_class"] == new
+
+    s = client.post("/api/class/rename", json={"class_id": new, "name": "shrub"}).json()
+    assert next(c for c in s["snapshot"]["classes"] if c["id"] == new)["name"] == "shrub"
+
+    s = client.post("/api/class/color", json={"class_id": new, "color": [1, 2, 3]}).json()
+    assert next(c for c in s["snapshot"]["classes"] if c["id"] == new)["color"] == [1, 2, 3]
+
+    s = client.post("/api/class/remove", json={"class_id": new}).json()
+    assert new not in [c["id"] for c in s["snapshot"]["classes"]]
+
+
+def test_bad_segment_params_return_400(client):
+    r = client.post("/api/segment", json={"name": "dbscan", "params": {"min_samples": -22}})
+    assert r.status_code == 400  # invalid params -> clean client error, not a 500
+
+
 def test_pick_assign_undo(client):
     client.post("/api/active_class", json={"class_id": 2})
     client.post("/api/pick", json={"index": 5})

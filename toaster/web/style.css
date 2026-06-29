@@ -5,7 +5,7 @@
   --line: #3a4255;
   --fg: #e6e9f0;
   --muted: #9aa3b8;
-  --accent: #e06c2b;
+  --accent: #6f8bb3;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -58,6 +58,13 @@ h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: v
 .item:hover { background: var(--panel2); }
 .item.active { background: var(--accent); color: #fff; }
 .swatch { width: 13px; height: 13px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,0.4); }
+.swatch-input {
+  width: 16px; height: 16px; padding: 0; flex: none; cursor: pointer;
+  background: none; border: 1px solid var(--line); border-radius: 3px;
+}
+.swatch-input::-webkit-color-swatch-wrapper { padding: 0; }
+.swatch-input::-webkit-color-swatch { border: none; border-radius: 2px; }
+.swatch-input::-moz-color-swatch { border: none; border-radius: 2px; }
 .item .count { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
 .item.active .count { color: #ffe9d8; }
 .item input[type="checkbox"] { margin: 0; }

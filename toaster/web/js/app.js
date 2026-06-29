@@ -14,6 +14,7 @@ let pickMode = "point";
 let currentGroup = null;
 
 const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+const hex = (c) => "#" + c.map((x) => x.toString(16).padStart(2, "0")).join("");
 const modifiers = (e) => [e.shiftKey && "shift", e.ctrlKey && "ctrl"].filter(Boolean);
 
 boot();
@@ -64,7 +65,16 @@ function renderClasses() {
   for (const c of state.snapshot.classes) {
     const row = document.createElement("div");
     row.className = "item" + (c.id === state.snapshot.active_class ? " active" : "");
-    row.innerHTML = `<span class="swatch" style="background:${rgb(c.color)}"></span>${c.id}  ${c.name}`;
+    const color = document.createElement("input");
+    color.type = "color";
+    color.className = "swatch-input";
+    color.value = hex(c.color);
+    color.title = "Change colour";
+    color.onclick = (e) => e.stopPropagation();
+    color.oninput = () => api.classColor(c.id, color.value).then(applyState);
+    const label = document.createElement("span");
+    label.textContent = `${c.id}  ${c.name}`;
+    row.append(color, label);
     row.onclick = () => api.activeClass(c.id).then(applyState);
     box.appendChild(row);
   }
@@ -134,6 +144,25 @@ function wire() {
   el("grp-assign").onclick = () => withGroup((g) => api.groupAssign(g).then(applyState));
   el("grp-suggested").onclick = () => withGroup((g) => api.groupSuggested(g).then(applyState));
 
+  el("cls-add").onclick = () => {
+    const n = prompt("New class name:");
+    if (n && n.trim()) api.classAdd(n.trim()).then(applyState);
+  };
+  el("cls-rename").onclick = () => {
+    const id = state.snapshot.active_class;
+    const n = prompt("Rename class:", className(id));
+    if (n && n.trim()) api.classRename(id, n.trim()).then(applyState);
+  };
+  el("cls-remove").onclick = () => {
+    const id = state.snapshot.active_class;
+    if (id === state.snapshot.unlabeled_id) {
+      alert("The 'unlabeled' class cannot be removed.");
+      return;
+    }
+    if (confirm(`Remove class '${className(id)}'? Its points become unlabeled.`))
+      api.classRemove(id).then(applyState);
+  };
+
   document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => act(b.dataset.act)));
   document.querySelectorAll("[data-mode-pick]").forEach((b) => {
     b.onclick = () => setPickMode(b.dataset.modePick);
@@ -164,12 +193,15 @@ function onKey(e) {
 
 async function runSegmenter() {
   const n = el("seg-name").value;
-  const params =
-    n === "dbscan"
-      ? { eps: +el("seg-eps").value, min_samples: +el("seg-ms").value }
-      : { min_cluster_size: +el("seg-ms").value };
+  const eps = Math.max(0.001, +el("seg-eps").value || 0.5);
+  const ms = Math.max(1, Math.round(+el("seg-ms").value || 10));
+  const params = n === "dbscan" ? { eps, min_samples: ms } : { min_cluster_size: ms };
   el("status").textContent = `running ${n}…`;
-  applyState(await api.segment(n, params, el("seg-scope").checked));
+  try {
+    applyState(await api.segment(n, params, el("seg-scope").checked));
+  } catch (e) {
+    el("status").textContent = "segmentation failed: " + e.message;
+  }
 }
 
 function setPickMode(mode) {

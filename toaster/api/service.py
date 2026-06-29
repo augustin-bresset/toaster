@@ -157,6 +157,22 @@ class AnnotationService:
         self._ctl().show_all_groups()
         return self.state()
 
+    def add_class(self, name: str, color=None) -> dict[str, Any]:
+        self._ctl().add_class(name, color)
+        return self.state()
+
+    def rename_class(self, class_id: int, name: str) -> dict[str, Any]:
+        self._ctl().rename_class(class_id, name)
+        return self.state()
+
+    def set_class_color(self, class_id: int, color) -> dict[str, Any]:
+        self._ctl().set_class_color(class_id, color)
+        return self.state()
+
+    def remove_class(self, class_id: int) -> dict[str, Any]:
+        self._ctl().remove_class(class_id)
+        return self.state()
+
     def save(self) -> dict[str, Any]:
         cloud = self._ctl().session.cloud
         if cloud.source is None:

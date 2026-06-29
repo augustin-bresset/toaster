@@ -2,15 +2,15 @@
 // API returns — the same job toaster.viewer.colormap does in Python, here on the
 // client so the wire only carries labels/grouping, never colour buffers.
 
+// Kept in sync with toaster/viewer/colormap.py (_GROUP_PALETTE).
 const GROUP_PALETTE = [
-  [230, 25, 75], [60, 180, 75], [255, 225, 25], [0, 130, 200],
-  [245, 130, 48], [145, 30, 180], [70, 240, 240], [240, 50, 230],
-  [210, 245, 60], [250, 190, 212], [0, 128, 128], [220, 190, 255],
-  [170, 110, 40], [255, 250, 200], [128, 0, 0], [170, 255, 195],
-  [128, 128, 0], [255, 215, 180], [0, 0, 128], [128, 128, 128],
+  [51, 34, 136], [136, 204, 238], [68, 170, 153], [17, 119, 51],
+  [153, 153, 51], [221, 204, 119], [204, 102, 119], [136, 34, 85],
+  [170, 68, 153], [119, 170, 221], [102, 204, 170], [187, 204, 51],
+  [238, 221, 136], [255, 170, 187], [153, 221, 255], [170, 170, 170],
 ];
-const NOISE = [90, 90, 90];
-const UNKNOWN = [40, 40, 40];
+const NOISE = [74, 80, 92];
+const UNKNOWN = [60, 64, 74];
 
 function setRGB(out, i, c) {
   out[i * 3] = c[0] / 255;

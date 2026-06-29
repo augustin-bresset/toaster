@@ -1,17 +1,17 @@
 # Toaster default label schema (apairo-compatible format).
-# Distinct, perceptually-spread hues (Tableau-like) so classes never blur together.
+# Muted, modern semantic colours (sober, good on a dark viewport).
 # ignore_index marks "not yet annotated".
 ignore_index: 0
 
 color_map:
-  0: '#555555'  # unlabeled  - grey
-  1: '#8c6d31'  # ground     - brown
-  2: '#2ca02c'  # vegetation - green
-  3: '#1f77b4'  # building   - blue
-  4: '#d62728'  # vehicle    - red
-  5: '#ff7f0e'  # person     - orange
-  6: '#9467bd'  # pole       - purple
-  7: '#17becf'  # other      - cyan
+  0: '#5a606e'  # unlabeled  - slate grey
+  1: '#8d8374'  # ground     - taupe
+  2: '#6a994e'  # vegetation - muted green
+  3: '#5b7aa5'  # building   - dusty blue
+  4: '#bc4b51'  # vehicle    - muted red
+  5: '#d39a4e'  # person     - amber
+  6: '#8a6fa8'  # pole       - muted purple
+  7: '#5aa6a6'  # other      - teal
 
 semantic_map:
   0: unlabeled

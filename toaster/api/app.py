@@ -76,6 +76,25 @@ class SoloBody(BaseModel):
     group_id: int
 
 
+class AddClassBody(BaseModel):
+    name: str
+    color: list[int] | str | None = None
+
+
+class RenameClassBody(BaseModel):
+    class_id: int
+    name: str
+
+
+class ClassColorBody(BaseModel):
+    class_id: int
+    color: list[int] | str
+
+
+class RemoveClassBody(BaseModel):
+    class_id: int
+
+
 def create_app(schema: LabelSchema | None = None) -> FastAPI:
     """Build the FastAPI app around a single :class:`AnnotationService`."""
     app = FastAPI(title="Toaster", version="0.1.0")
@@ -85,6 +104,11 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     @app.exception_handler(RuntimeError)
     async def _runtime_error(_request, exc: RuntimeError):
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ValueError)
+    async def _value_error(_request, exc: ValueError):
+        # e.g. invalid segmenter parameters — a client mistake, not a server bug.
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     # -- reads --
     @app.get("/api/meta")
@@ -168,6 +192,23 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     @app.post("/api/groups/show_all")
     def groups_show_all():
         return service.show_all_groups()
+
+    # -- class (schema) editing --
+    @app.post("/api/class/add")
+    def class_add(body: AddClassBody):
+        return service.add_class(body.name, body.color)
+
+    @app.post("/api/class/rename")
+    def class_rename(body: RenameClassBody):
+        return service.rename_class(body.class_id, body.name)
+
+    @app.post("/api/class/color")
+    def class_color(body: ClassColorBody):
+        return service.set_class_color(body.class_id, body.color)
+
+    @app.post("/api/class/remove")
+    def class_remove(body: RemoveClassBody):
+        return service.remove_class(body.class_id)
 
     # -- static web front (served at / when built) --
     web_dir = resources.files("toaster") / "web"

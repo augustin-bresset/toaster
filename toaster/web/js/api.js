@@ -59,4 +59,8 @@ export const api = {
     jpost("/api/group/visibility", { group_id, visible }),
   groupSolo: (group_id) => jpost("/api/group/solo", { group_id }),
   groupsShowAll: () => jpost("/api/groups/show_all"),
+  classAdd: (name, color = null) => jpost("/api/class/add", { name, color }),
+  classRename: (class_id, name) => jpost("/api/class/rename", { class_id, name }),
+  classColor: (class_id, color) => jpost("/api/class/color", { class_id, color }),
+  classRemove: (class_id) => jpost("/api/class/remove", { class_id }),
 };

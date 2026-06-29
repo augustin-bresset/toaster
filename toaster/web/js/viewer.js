@@ -35,13 +35,16 @@ export class Viewer {
     this.container = container;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x1f2430);
-    this.camera = new THREE.PerspectiveCamera(60, this._aspect(), 0.01, 100000);
+    this.camera = new THREE.PerspectiveCamera(55, this._aspect(), 0.01, 100000);
+    this.camera.up.set(0, 0, 1); // Z-up, the natural convention for lidar
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
+    this.controls.enableDamping = false; // crisp, predictable orbit (no inertia drift)
+    this.controls.rotateSpeed = 0.8;
+    this.controls.zoomSpeed = 0.9;
 
     this.geom = null;
     this.points = null;
@@ -97,7 +100,7 @@ export class Viewer {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     const m = new THREE.PointsMaterial({
-      color: 0xffd400,
+      color: 0xf4d35e,
       size: this.material.uniforms.uSize.value + 4,
       sizeAttenuation: false,
       depthTest: false,
@@ -162,7 +165,8 @@ export class Viewer {
     this.geom.computeBoundingSphere();
     const s = this.geom.boundingSphere;
     this.controls.target.copy(s.center);
-    const off = new THREE.Vector3(1, 1, 1).multiplyScalar(s.radius * 1.6);
+    // 3/4 aerial view for a Z-up scene (above, and to the side).
+    const off = new THREE.Vector3(1.3, -1.3, 0.9).multiplyScalar(s.radius);
     this.camera.position.copy(s.center.clone().add(off));
     this.camera.near = Math.max(s.radius / 1000, 0.001);
     this.camera.far = s.radius * 50;

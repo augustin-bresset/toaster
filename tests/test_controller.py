@@ -171,6 +171,31 @@ def test_group_visibility_commands(two_clusters, schema):
     assert all(s.visible for s in ctl.snapshot().segments)
 
 
+def test_class_editing(two_clusters, schema):
+    from toaster.core import Selection
+
+    two_clusters.ensure_labels(schema.unlabeled_id)
+    session = Session(two_clusters, schema)
+    ctl = InteractionController(session, FakeViewer())
+
+    # Add a class -> it becomes the active brush.
+    new_id = ctl.add_class("tree", (1, 2, 3))
+    assert session.active_class == new_id
+    assert session.schema.get(new_id).color == (1, 2, 3)
+
+    # Rename and recolour an existing class.
+    ctl.rename_class(1, "floor")
+    assert session.schema.get(1).name == "floor"
+    ctl.set_class_color(1, (9, 9, 9))
+    assert session.schema.get(1).color == (9, 9, 9)
+
+    # Label points class 1, then remove class 1 -> they fall back to unlabeled.
+    session.annotation.assign(Selection.from_indices([0, 1, 2], two_clusters.n), 1)
+    ctl.remove_class(1)
+    assert 1 not in [c.id for c in session.schema.classes]
+    assert (session.cloud.labels[:3] == schema.unlabeled_id).all()
+
+
 def test_snapshot_is_a_flat_serializable_read_model(two_clusters, schema):
     from dataclasses import asdict
 

@@ -255,6 +255,37 @@ class InteractionController:
         hidden = np.isin(grouping.group_id, list(self._hidden_groups))
         self.viewer.set_visible_mask(~hidden)
 
+    # -- class (schema) editing -------------------------------------------
+
+    def add_class(self, name: str, color=None) -> int:
+        """Add a class to the palette and make it the active brush. Returns its id."""
+        cls = self.session.schema.add_class(name, color)
+        self.session.active_class = cls.id
+        self._changed()
+        return cls.id
+
+    def rename_class(self, class_id: int, name: str) -> None:
+        self.session.schema.rename(class_id, name)
+        self._changed()
+
+    def set_class_color(self, class_id: int, color) -> None:
+        self.session.schema.set_color(class_id, color)
+        self.refresh_display()  # recolour that class's points
+        self._changed()
+
+    def remove_class(self, class_id: int) -> None:
+        """Remove a class; its points fall back to ``unlabeled``."""
+        schema = self.session.schema
+        if class_id == schema.unlabeled_id:
+            return
+        labels = self.session.cloud.ensure_labels(schema.unlabeled_id)
+        labels[labels == class_id] = schema.unlabeled_id
+        schema.remove(class_id)
+        if self.session.active_class == class_id:
+            self.session.active_class = schema.unlabeled_id
+        self.refresh_display()
+        self._changed()
+
     # -- read model -------------------------------------------------------
 
     def cloud_xyz(self) -> np.ndarray:

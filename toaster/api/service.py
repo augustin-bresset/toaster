@@ -19,7 +19,7 @@ from toaster.core import LabelSchema, Session
 from toaster.interaction import InteractionController
 from toaster.io import load_cloud
 from toaster.persistence import LabelStore
-from toaster.segment import available_segmenters, get_segmenter
+from toaster.segment import get_segmenter, segmenter_specs
 from toaster.viewer import NullViewer
 
 from .serialize import encode_array
@@ -70,7 +70,7 @@ class AnnotationService:
         """Small metadata: point count and available segmenters."""
         return {
             "n": self._session.cloud.n if self._session else 0,
-            "segmenters": available_segmenters(),
+            "segmenters": segmenter_specs(),  # [{name, params: [...]}]
             "source": str(self._session.cloud.source) if self._session else None,
         }
 

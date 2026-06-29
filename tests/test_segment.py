@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
-from toaster.core import Selection
-from toaster.segment import FunctionSegmenter, ModelSegmenter, available_segmenters, get_segmenter
+from toaster.core import PointCloud, Selection
+from toaster.segment import (
+    FunctionSegmenter,
+    ModelSegmenter,
+    available_segmenters,
+    get_segmenter,
+    segmenter_specs,
+)
 
 
 def test_dbscan_finds_two_clusters(two_clusters):
@@ -42,6 +49,43 @@ def test_function_segmenter(two_clusters):
     grouping = seg.segment(two_clusters)
     assert grouping.n_groups == 2
     assert grouping.source == "split_x"
+
+
+def test_registry_has_the_new_algorithms():
+    names = available_segmenters()
+    for n in ["kmeans", "kmedoids", "agglomerative", "optics", "meanshift",
+              "ransac_ground", "ground_grid"]:  # fmt: skip
+        assert n in names
+
+
+def test_segmenter_specs_carry_params():
+    specs = {s["name"]: s["params"] for s in segmenter_specs()}
+    assert {p["name"] for p in specs["dbscan"]} == {"eps", "min_samples"}
+    assert specs["kmeans"][0]["name"] == "n_clusters"
+    assert specs["ground_grid"][0]["type"] == "float"
+
+
+@pytest.mark.parametrize("name", ["kmeans", "kmedoids", "agglomerative"])
+def test_partitioning_clusterers_make_k_groups(name, two_clusters):
+    grouping = get_segmenter(name, n_clusters=2).segment(two_clusters)
+    assert grouping.n_groups == 2
+
+
+@pytest.fixture
+def ground_scene():
+    rng = np.random.default_rng(1)
+    ground = rng.uniform([-5, -5, -0.02], [5, 5, 0.02], (300, 3))
+    obstacle = rng.uniform([0, 0, 1.0], [1, 1, 2.0], (60, 3))
+    return PointCloud(np.vstack([ground, obstacle]).astype(np.float32))
+
+
+@pytest.mark.parametrize("name", ["ground_grid", "ransac_ground"])
+def test_ground_detection_splits_and_suggests(name, ground_scene):
+    grouping = get_segmenter(name).segment(ground_scene)
+    # Group 0 = ground, group 1 = non-ground, suggested -> traversable / obstacle.
+    assert grouping.suggested_labels == {0: 1, 1: 2}
+    assert (grouping.group_id[:300] == 0).all()  # the flat plane is ground
+    assert (grouping.group_id[300:] == 1).all()  # the raised box is non-ground
 
 
 def test_model_segmenter_attaches_suggested_labels(two_clusters):

@@ -29,6 +29,7 @@ dependencies = [
 apairo = ["apairo @ git+https://github.com/apairo-robotics/apairo.git"]
 open3d = ["open3d"]
 hdbscan = ["hdbscan"]
+csf = ["cloth-simulation-filter"]  # CSF ground-detection segmenter
 models = ["onnxruntime-gpu"]
 torch = ["torch"]
 viewer3d = ["pyvista"]  # legacy VTK Viewer backend (toaster.viewer.PyVistaViewer)

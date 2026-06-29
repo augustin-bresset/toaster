@@ -14,6 +14,7 @@ let pickMode = "point";
 let currentGroup = null;
 let focusGroup = null; // a group to scroll/flash in the Segments window after a re-render
 let topZ = 10;
+let segSpecs = {}; // segmenter name -> [{name, type, default, min, max, step}]
 
 const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
 const hex = (c) => "#" + c.map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -23,11 +24,34 @@ boot();
 
 async function boot() {
   const meta = await api.meta();
-  el("seg-name").innerHTML = meta.segmenters.map((s) => `<option>${s}</option>`).join("");
+  segSpecs = {};
+  for (const s of meta.segmenters) segSpecs[s.name] = s.params;
+  el("seg-name").innerHTML = meta.segmenters.map((s) => `<option>${s.name}</option>`).join("");
+  renderSegParams(el("seg-name").value);
   buildModes();
   wire();
   if (meta.n > 0) await loadCloud();
   else el("status").textContent = "no cloud — start: toaster-web <file>";
+}
+
+// Render the parameter fields for the selected segmenter from its spec.
+function renderSegParams(name) {
+  const box = el("seg-params");
+  box.innerHTML = "";
+  for (const p of segSpecs[name] || []) {
+    const row = document.createElement("label");
+    row.className = "row";
+    const input = document.createElement("input");
+    input.type = "number";
+    input.dataset.param = p.name;
+    input.dataset.ptype = p.type;
+    input.value = p.default;
+    if (p.min != null) input.min = p.min;
+    if (p.max != null) input.max = p.max;
+    input.step = p.step != null ? p.step : p.type === "int" ? 1 : "any";
+    row.append(document.createTextNode(p.name + " "), input);
+    box.appendChild(row);
+  }
 }
 
 async function loadCloud() {
@@ -135,7 +159,9 @@ function renderModes() {
 function renderGroups() {
   const box = el("groups");
   box.innerHTML = "";
-  const segs = state.snapshot.segments;
+  const all = state.snapshot.segments;
+  const CAP = 400; // a voxel/k-means grouping can have thousands; keep the DOM light
+  const segs = all.slice(0, CAP);
   el("groups-header").textContent = state.snapshot.active_grouping
     ? `${state.snapshot.active_grouping.n_groups} segments · ${state.snapshot.active_grouping.source}`
     : "Segments — run a segmenter";
@@ -164,6 +190,13 @@ function renderGroups() {
     };
     box.appendChild(row);
   }
+  if (all.length > segs.length) {
+    const more = document.createElement("div");
+    more.className = "muted";
+    more.style.padding = "4px 6px";
+    more.textContent = `… ${(all.length - segs.length).toLocaleString()} more (click points in the cloud)`;
+    box.appendChild(more);
+  }
 
   // A click in the 3-D cloud asked us to focus its segment here: scroll + flash.
   if (focusGroup != null) {
@@ -187,11 +220,13 @@ const withGroup = (fn) => {
 function wire() {
   el("psize").oninput = (e) => viewer.setPointSize(+e.target.value);
   el("round").onchange = (e) => viewer.setRound(e.target.checked);
+  el("seg-name").onchange = () => renderSegParams(el("seg-name").value);
   el("seg-run").onclick = runSegmenter;
   el("grp-solo").onclick = () => withGroup((g) => api.groupSolo(g).then(applyState));
   el("grp-showall").onclick = () => api.groupsShowAll().then(applyState);
   el("grp-assign").onclick = () => withGroup((g) => api.groupAssign(g).then(applyState));
   el("grp-suggested").onclick = () => withGroup((g) => api.groupSuggested(g).then(applyState));
+  el("grp-suggest-all").onclick = () => api.groupSuggested(null).then(applyState);
 
   el("cls-add").onclick = () => {
     const n = prompt("New class name:");
@@ -288,9 +323,11 @@ function onKey(e) {
 
 async function runSegmenter() {
   const n = el("seg-name").value;
-  const eps = Math.max(0.001, +el("seg-eps").value || 0.5);
-  const ms = Math.max(1, Math.round(+el("seg-ms").value || 10));
-  const params = n === "dbscan" ? { eps, min_samples: ms } : { min_cluster_size: ms };
+  const params = {};
+  for (const inp of el("seg-params").querySelectorAll("[data-param]")) {
+    const v = +inp.value;
+    params[inp.dataset.param] = inp.dataset.ptype === "int" ? Math.round(v) : v;
+  }
   el("status").textContent = `running ${n}…`;
   setLoading(true);
   try {

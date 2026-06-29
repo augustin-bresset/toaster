@@ -12,6 +12,7 @@ per-subset cluster ids back into a full-length grouping with ``-1`` outside.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 import numpy as np
@@ -19,7 +20,27 @@ import numpy as np
 from toaster.core import Grouping, PointCloud, Selection
 from toaster.core.types import NOISE
 
-__all__ = ["Segmenter", "resolve_points", "gather_inputs", "scatter", "all_noise"]
+__all__ = [
+    "Segmenter",
+    "Param",
+    "params_of",
+    "resolve_points",
+    "gather_inputs",
+    "scatter",
+    "all_noise",
+]
+
+
+@dataclass(frozen=True)
+class Param:
+    """A tunable parameter of a segmenter, for the UI to render a field for."""
+
+    name: str
+    type: str  # "int" | "float"
+    default: float
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
 
 
 @runtime_checkable
@@ -28,10 +49,17 @@ class Segmenter(Protocol):
 
     #: Stable registry name (e.g. ``"dbscan"``).
     name: str
+    #: Tunable parameters (optional); drives the segmenter panel's fields.
+    PARAMS: list[Param]
 
     def segment(self, cloud: PointCloud, selection: Selection | None = None) -> Grouping:
         """Return a full-length grouping; ``-1`` for noise / outside ``selection``."""
         ...
+
+
+def params_of(cls: type) -> list[Param]:
+    """The declared parameters of a segmenter class (empty if it has none)."""
+    return list(getattr(cls, "PARAMS", []))
 
 
 def resolve_points(cloud: PointCloud, selection: Selection | None) -> tuple[np.ndarray, np.ndarray]:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from toaster.core import Grouping, PointCloud, Selection
 
-from .base import all_noise, resolve_points, scatter
+from .base import Param, all_noise, resolve_points, scatter
 
 __all__ = ["DBSCANSegmenter"]
 
@@ -21,6 +21,10 @@ class DBSCANSegmenter:
     """
 
     name = "dbscan"
+    PARAMS = [
+        Param("eps", "float", 0.5, 0.01, 100.0, 0.05),
+        Param("min_samples", "int", 10, 1, 1000, 1),
+    ]
 
     def __init__(self, eps: float = 0.5, min_samples: int = 10) -> None:
         self.eps = float(eps)

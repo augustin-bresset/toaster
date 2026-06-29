@@ -64,8 +64,7 @@
         <div class="titlebar">Segmenter</div>
         <div class="body">
           <select id="seg-name"></select>
-          <label class="row">eps <input id="seg-eps" type="number" min="0.001" step="0.05" value="0.5" /></label>
-          <label class="row">min_samples <input id="seg-ms" type="number" min="1" step="1" value="10" /></label>
+          <div id="seg-params"></div>
           <label class="row"><input id="seg-scope" type="checkbox" checked /> On selection only</label>
           <button id="seg-run" class="primary">Run</button>
         </div>
@@ -97,8 +96,9 @@
           </div>
           <div class="row">
             <button id="grp-assign">Assign class</button>
-            <button id="grp-suggested">Assign suggested</button>
+            <button id="grp-suggested">Suggest</button>
           </div>
+          <button id="grp-suggest-all">Assign all suggested</button>
         </div>
       </div>
 

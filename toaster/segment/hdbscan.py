@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from toaster.core import Grouping, PointCloud, Selection
 
-from .base import all_noise, resolve_points, scatter
+from .base import Param, all_noise, resolve_points, scatter
 
 __all__ = ["HDBSCANSegmenter"]
 
@@ -24,6 +24,7 @@ class HDBSCANSegmenter:
     """
 
     name = "hdbscan"
+    PARAMS = [Param("min_cluster_size", "int", 25, 2, 5000, 1)]
 
     def __init__(self, min_cluster_size: int = 25, min_samples: int | None = None) -> None:
         self.min_cluster_size = int(min_cluster_size)

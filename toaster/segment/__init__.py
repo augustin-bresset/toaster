@@ -15,26 +15,45 @@ Then construct it by name: ``get_segmenter("mine", **params)``.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import asdict
 
 import numpy as np
 
-from .base import Segmenter, gather_inputs, resolve_points, scatter
+from .base import Param, Segmenter, gather_inputs, params_of, resolve_points, scatter
+from .cluster import (
+    AgglomerativeSegmenter,
+    KMeansSegmenter,
+    KMedoidsSegmenter,
+    MeanShiftSegmenter,
+    OPTICSSegmenter,
+)
 from .dbscan import DBSCANSegmenter
+from .ground import CSFGroundSegmenter, GroundGridSegmenter, RANSACGroundSegmenter
 from .hdbscan import HDBSCANSegmenter
 from .model import FunctionSegmenter, ModelSegmenter
 
 __all__ = [
     "Segmenter",
+    "Param",
     "resolve_points",
     "gather_inputs",
     "scatter",
     "DBSCANSegmenter",
     "HDBSCANSegmenter",
+    "KMeansSegmenter",
+    "KMedoidsSegmenter",
+    "AgglomerativeSegmenter",
+    "OPTICSSegmenter",
+    "MeanShiftSegmenter",
+    "RANSACGroundSegmenter",
+    "GroundGridSegmenter",
+    "CSFGroundSegmenter",
     "FunctionSegmenter",
     "ModelSegmenter",
     "SEGMENTERS",
     "register_segmenter",
     "register_model",
+    "segmenter_specs",
     "get_segmenter",
     "available_segmenters",
 ]
@@ -100,5 +119,24 @@ def available_segmenters() -> list[str]:
     return sorted(SEGMENTERS)
 
 
-register_segmenter(DBSCANSegmenter)
-register_segmenter(HDBSCANSegmenter)
+def segmenter_specs() -> list[dict]:
+    """Each registered segmenter as ``{name, params: [...]}`` for a front-end."""
+    return [
+        {"name": name, "params": [asdict(p) for p in params_of(SEGMENTERS[name])]}
+        for name in available_segmenters()
+    ]
+
+
+for _seg in (
+    DBSCANSegmenter,
+    HDBSCANSegmenter,
+    KMeansSegmenter,
+    KMedoidsSegmenter,
+    AgglomerativeSegmenter,
+    OPTICSSegmenter,
+    MeanShiftSegmenter,
+    RANSACGroundSegmenter,
+    GroundGridSegmenter,
+    CSFGroundSegmenter,
+):
+    register_segmenter(_seg)

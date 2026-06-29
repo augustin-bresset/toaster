@@ -1,0 +1,298 @@
+/* Brutalist black/red "toaster" theme: hard edges, heavy borders, high contrast. */
+:root {
+  --bg: #0a0a0a;
+  --panel: #141414;
+  --line: #333333;
+  --fg: #f2f2f2;
+  --muted: #8a8a8a;
+  --accent: #e10600;
+  --accent-dim: #7a0300;
+  --glow: 0 0 6px rgba(225, 6, 0, 0.55), 0 0 16px rgba(225, 6, 0, 0.22);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex; flex-direction: column;
+  font: 13px/1.4 "Helvetica Neue", Arial, sans-serif;
+  color: var(--fg); background: var(--bg);
+}
+
+/* -- toolbar -- */
+#toolbar {
+  display: flex; align-items: center; gap: 6px; position: relative; z-index: 100;
+  padding: 6px 10px; background: #000; border-bottom: 2px solid var(--accent);
+  box-shadow: 0 2px 14px rgba(225, 6, 0, 0.35); /* heating-element glow */
+}
+
+/* Only the bottom neon line grésille — like a real neon tube cutting in and out.
+   Hard on/off steps (no fade), and only border + glow change (the bar's content
+   is untouched). Theme-aware via --accent; reverts to the steady glow on end. */
+#toolbar.flicker { animation: neon-flicker 0.5s steps(1, end) 1; }
+@keyframes neon-flicker {
+  0%, 100% { border-bottom-color: var(--accent); box-shadow: 0 2px 16px var(--accent); }
+  9% { border-bottom-color: transparent; box-shadow: none; }
+  15% { border-bottom-color: var(--accent); box-shadow: 0 2px 20px var(--accent); }
+  21% { border-bottom-color: transparent; box-shadow: none; }
+  27% { border-bottom-color: var(--accent); box-shadow: 0 2px 14px var(--accent); }
+  45% { border-bottom-color: var(--accent); box-shadow: 0 2px 22px var(--accent); }
+  50% { border-bottom-color: transparent; box-shadow: none; }
+  56% { border-bottom-color: var(--accent); box-shadow: 0 2px 16px var(--accent); }
+}
+#toolbar.glitch { animation: neon-glitch 1.1s steps(1, end) 1; }
+@keyframes neon-glitch {
+  0%, 100% { border-bottom-color: var(--accent); box-shadow: 0 2px 16px var(--accent); }
+  4% { border-bottom-color: transparent; box-shadow: none; }
+  8% { border-bottom-color: var(--accent); box-shadow: 0 2px 26px var(--accent); }
+  11% { border-bottom-color: transparent; box-shadow: none; }
+  15% { border-bottom-color: var(--accent); box-shadow: 0 2px 14px var(--accent); }
+  18% { border-bottom-color: transparent; box-shadow: none; }
+  20% { border-bottom-color: var(--accent); box-shadow: 0 2px 30px var(--accent); }
+  24% { border-bottom-color: transparent; box-shadow: none; }
+  30% { border-bottom-color: var(--accent); box-shadow: 0 2px 18px var(--accent); }
+  38% { border-bottom-color: transparent; box-shadow: none; }
+  42% { border-bottom-color: var(--accent); box-shadow: 0 2px 24px var(--accent); }
+  46% { border-bottom-color: transparent; box-shadow: none; }
+  52% { border-bottom-color: var(--accent); box-shadow: 0 2px 16px var(--accent); }
+  60% { border-bottom-color: var(--accent); box-shadow: 0 2px 28px var(--accent); }
+  64% { border-bottom-color: transparent; box-shadow: none; }
+  70% { border-bottom-color: var(--accent); box-shadow: 0 2px 16px var(--accent); }
+  82% { border-bottom-color: transparent; box-shadow: none; }
+  86% { border-bottom-color: var(--accent); box-shadow: 0 2px 20px var(--accent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #toolbar.flicker, #toolbar.glitch { animation: none; }
+}
+.logo { display: inline-flex; align-items: center; gap: 8px; color: var(--fg); }
+.logo b { letter-spacing: 4px; font-weight: 800; font-size: 15px; }
+
+/* Per-theme logo: each theme shows its own animated mark. */
+.logo-art { display: none; align-items: center; line-height: 0; }
+body[data-theme="toaster"] .logo-art[data-logo="toaster"],
+body[data-theme="cafe"] .logo-art[data-logo="cafe"],
+body[data-theme="arcade"] .logo-art[data-logo="arcade"] { display: inline-flex; }
+.logo-art svg { overflow: visible; }
+.logo-art g { transform-box: fill-box; transform-origin: center; }
+
+/* Toaster — the toast bobs as if about to pop. */
+.logo-art[data-logo="toaster"] .toast { animation: toastbob 2.4s ease-in-out infinite; }
+@keyframes toastbob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+
+/* Café — steam rises and shimmers above the cup. */
+.logo-art[data-logo="cafe"] .steam { transform-origin: center bottom; animation: steamrise 2.2s ease-in-out infinite; }
+@keyframes steamrise {
+  0% { opacity: 0.2; transform: translateY(2px) scaleY(0.9); }
+  50% { opacity: 0.95; transform: translateY(-2px) scaleY(1.05); }
+  100% { opacity: 0.2; transform: translateY(-5px) scaleY(0.9); }
+}
+
+/* Arcade — the invader hops in two stepped frames, like the originals. */
+.logo-art[data-logo="arcade"] .invader { animation: invhop 0.7s steps(2, jump-none) infinite; }
+@keyframes invhop { 0% { transform: translateY(0); } 100% { transform: translateY(-3px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-art .toast, .logo-art .steam, .logo-art .invader { animation: none; }
+}
+.sep { width: 2px; height: 18px; background: var(--line); margin: 0 4px; }
+.spacer { flex: 1; }
+#status { color: var(--muted); font: 11px/1 ui-monospace, monospace; letter-spacing: 0.5px; }
+.group { display: inline-flex; gap: 4px; }
+
+/* -- loading bar -- */
+#loading { height: 3px; background: transparent; overflow: hidden; position: relative; z-index: 100; }
+#loading .bar {
+  width: 34%; height: 100%; transform: translateX(-130%); border-radius: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent) 65%, #fff);
+  box-shadow: 0 0 14px 2px var(--accent);
+}
+#loading.on .bar { animation: load 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+@keyframes load { from { transform: translateX(-130%); } to { transform: translateX(420%); } }
+
+/* Heating element: a glowing coil that breathes along the bottom edge. */
+body::after {
+  content: ""; position: fixed; left: 0; right: 0; bottom: 0; height: 2px;
+  background: var(--accent); box-shadow: 0 0 20px 3px rgba(225, 6, 0, 0.6);
+  pointer-events: none; z-index: 1; animation: ember 3s ease-in-out infinite;
+}
+@keyframes ember { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+/* -- controls -- */
+button {
+  background: #1a1a1a; color: var(--fg);
+  border: 2px solid var(--line); border-radius: 0;
+  padding: 4px 10px; cursor: pointer;
+  font: 600 11px/1.2 inherit; text-transform: uppercase; letter-spacing: 0.6px;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #000; width: 100%; box-shadow: var(--glow); }
+button.primary:hover { background: #fff; border-color: #fff; color: #000; }
+button.toggle.active, button.active { background: var(--accent); border-color: var(--accent); color: #000; }
+select, input[type="number"], input[type="text"] {
+  background: #1a1a1a; color: var(--fg); border: 2px solid var(--line);
+  border-radius: 0; padding: 3px; font: inherit;
+}
+input[type="text"]:focus { outline: none; border-color: var(--accent); }
+input[type="range"] { accent-color: var(--accent); }
+input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:disabled:hover { border-color: var(--line); color: inherit; }
+button.busy { animation: busy 0.8s ease-in-out infinite; opacity: 1; cursor: progress; }
+@keyframes busy { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* -- viewport + floating windows -- */
+main { flex: 1; position: relative; min-height: 0; overflow: hidden; }
+#viewport { position: absolute; inset: 0; }
+#viewport canvas { display: block; }
+
+.window {
+  position: fixed; z-index: 5;
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 2px solid var(--line);
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.7), 0 0 18px rgba(225, 6, 0, 0.12);
+  max-height: calc(100vh - 70px);
+}
+.titlebar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 9px; cursor: move; user-select: none; touch-action: none;
+  background: #000; border-bottom: 2px solid var(--accent);
+  box-shadow: 0 3px 10px -3px rgba(225, 6, 0, 0.55);
+  text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; font-size: 11px;
+}
+.titlebar .x {
+  margin-left: auto; border: none; background: none; color: var(--muted);
+  font-size: 16px; line-height: 1; padding: 0 2px;
+}
+.titlebar .x:hover { color: var(--accent); }
+.titlebar .gear {
+  margin-left: auto; border: none; background: none; color: var(--muted);
+  font-size: 14px; line-height: 1; padding: 0 2px; cursor: pointer;
+}
+.titlebar .gear:hover { color: var(--accent); }
+.body { padding: 8px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overflow-x: hidden; }
+.row button { min-width: 0; padding: 4px 6px; }
+.body.grow { flex: 1; min-height: 0; }
+.row { display: flex; align-items: center; gap: 6px; }
+.row button { flex: 1; }
+
+/* -- lists -- */
+.list { display: flex; flex-direction: column; gap: 1px; overflow-y: auto; }
+.list.grow { flex: 1; min-height: 80px; }
+.item {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 6px; cursor: pointer; user-select: none;
+  border: 1px solid transparent;
+}
+.item:hover { border-color: var(--line); }
+.item.active { background: var(--accent); color: #000; }
+.item.flash { animation: flash 0.8s ease-out; }
+@keyframes flash {
+  0% { box-shadow: inset 0 0 0 2px var(--accent); }
+  100% { box-shadow: none; }
+}
+.item .count { margin-left: auto; color: var(--muted); font: 11px ui-monospace, monospace; }
+.item.active .count { color: #2a0000; }
+.swatch { width: 13px; height: 13px; flex: none; border: 1px solid #000; }
+.swatch-input {
+  width: 16px; height: 16px; padding: 0; flex: none; cursor: pointer;
+  background: none; border: 1px solid var(--line);
+}
+.swatch-input::-webkit-color-swatch-wrapper { padding: 0; }
+.swatch-input::-webkit-color-swatch { border: none; }
+.swatch-input::-moz-color-swatch { border: none; }
+
+.kv { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.kv .count { margin-left: auto; color: var(--muted); font-family: ui-monospace, monospace; }
+.muted { color: var(--muted); }
+
+#theme { padding: 3px 4px; }
+
+/* A toast that jumps up when a grouping is produced (Pixel Breakfast). */
+.toast-pop {
+  position: fixed; left: 50%; top: 60%; font-size: 54px; transform: translateX(-50%);
+  pointer-events: none; z-index: 200; animation: toastjump 1s ease-out forwards;
+}
+@keyframes toastjump {
+  0% { transform: translate(-50%, 44px) scale(0.6); opacity: 0; }
+  30% { transform: translate(-50%, -36px) scale(1.12); opacity: 1; }
+  100% { transform: translate(-50%, -94px) scale(1); opacity: 0; }
+}
+
+/* ===== Themes (default = Toaster, set in :root above) ===== */
+
+/* extra fun animations (used by the themes below) */
+.score-pop {
+  position: fixed; pointer-events: none; z-index: 200;
+  font-family: "Press Start 2P", monospace; font-size: 13px; color: #ffe08a;
+  text-shadow: 0 0 6px rgba(255, 204, 0, 0.85); animation: scorepop 0.9s ease-out forwards;
+}
+@keyframes scorepop {
+  0% { transform: translateY(0) scale(0.8); opacity: 0; }
+  20% { transform: translateY(-14px) scale(1.15); opacity: 1; }
+  100% { transform: translateY(-50px) scale(1); opacity: 0; }
+}
+.levelup {
+  position: fixed; left: 50%; top: 36%; transform: translateX(-50%); pointer-events: none;
+  z-index: 201; font-family: "Press Start 2P", monospace; font-size: 28px; color: #ffcc00;
+  text-shadow: 0 0 14px rgba(255, 204, 0, 0.9); animation: levelup 1.2s ease-out forwards;
+}
+@keyframes levelup {
+  0% { opacity: 0; transform: translate(-50%, 12px) scale(0.7); }
+  25% { opacity: 1; transform: translate(-50%, 0) scale(1.2); }
+  80% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -12px) scale(1); }
+}
+.ding-pop {
+  position: fixed; left: 50%; top: 13%; transform: translateX(-50%); pointer-events: none;
+  z-index: 200; font-size: 22px; animation: dingpop 0.9s ease-out forwards;
+}
+@keyframes dingpop {
+  0% { opacity: 0; transform: translate(-50%, 8px) scale(0.8); }
+  25% { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -16px) scale(1); }
+}
+.logo.press svg { animation: leverpress 0.4s ease; }
+@keyframes leverpress {
+  0% { transform: translateY(0); } 45% { transform: translateY(3px); } 100% { transform: translateY(0); }
+}
+
+/* CRT scanline overlay (only shown by the Arcade theme) */
+#crt { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 150; }
+body[data-theme="arcade"] #crt {
+  display: block;
+  background:
+    repeating-linear-gradient(rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, 0.18) 2px 3px),
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.5) 100%);
+}
+
+/* Café Toaster — dark espresso + golden toast, pixel font, kitchen gags */
+body[data-theme="cafe"] {
+  --bg: #181310; --panel: #241b13; --line: #46341f; --fg: #f1e4ce;
+  --muted: #b39a76; --accent: #f2a93c; --accent-dim: #b8791a; --glow: 0 0 8px rgba(242, 169, 60, 0.5);
+  font-family: "VT323", monospace; font-size: 15px;
+  cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><line x1='4' y1='4' x2='14' y2='14' stroke='%23f2a93c' stroke-width='3' stroke-linecap='round'/><rect x='12' y='13' width='13' height='10' rx='2.5' fill='%23d7d7d7' stroke='%23b8791a' stroke-width='1.5'/><line x1='16' y1='16' x2='22' y2='16' stroke='%23888888' stroke-width='1'/><line x1='16' y1='19' x2='22' y2='19' stroke='%23888888' stroke-width='1'/></svg>") 4 4, auto;
+}
+body[data-theme="cafe"] .logo b { font-family: "Press Start 2P", monospace; font-size: 11px; color: var(--accent); }
+body[data-theme="cafe"] button {
+  background: #3a2a1a; border-color: #8a5a2e; color: #f0d9b0;
+  border-radius: 11px 14px 11px 14px; text-transform: none; letter-spacing: 0;
+}
+body[data-theme="cafe"] button:hover { background: #4a361f; color: #fff; border-color: var(--accent); }
+body[data-theme="cafe"] button.primary { background: var(--accent); color: #2a1605; border-color: var(--accent-dim); }
+body[data-theme="cafe"] .item.active { color: #2a1605; }
+
+/* Arcade Quest — near-black, gold / red, pixel font, CRT + score */
+body[data-theme="arcade"] {
+  --bg: #050507; --panel: #0e0e14; --line: #2a2230; --fg: #ffe08a;
+  --muted: #b08a3a; --accent: #ffcc00; --accent-dim: #c79a00; --glow: 0 0 8px rgba(255, 204, 0, 0.6);
+  font-family: "VT323", monospace; font-size: 15px;
+}
+body[data-theme="arcade"] #toolbar { box-shadow: 0 2px 14px rgba(255, 204, 0, 0.3); }
+body[data-theme="arcade"] .logo b { font-family: "Press Start 2P", monospace; font-size: 11px; color: #ff3b3b; text-shadow: 0 0 8px #ff3b3b; }
+body[data-theme="arcade"] button { text-transform: none; letter-spacing: 0; }
+body[data-theme="arcade"] button.primary { color: #1a1400; }
+body[data-theme="arcade"] .titlebar { color: var(--accent); text-shadow: 0 0 6px rgba(255, 204, 0, 0.7); box-shadow: 0 3px 10px -3px rgba(255, 204, 0, 0.5); }
+body[data-theme="arcade"]::after { box-shadow: 0 0 16px 2px rgba(255, 204, 0, 0.6); }
+
+#rubber {
+  position: fixed; border: 2px solid var(--accent);
+  background: rgba(225, 6, 0, 0.15); pointer-events: none; display: none; z-index: 50;
+}

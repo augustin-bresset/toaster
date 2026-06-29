@@ -1,0 +1,14 @@
+# Toaster default label schema (apairo-compatible format).
+# Minimal traversability set: unlabeled / traversable / obstacle.
+# ignore_index marks "not yet annotated".
+ignore_index: 0
+
+color_map:
+  0: '#5a606e'  # unlabeled   - slate grey
+  1: '#3f9b5b'  # traversable - green
+  2: '#d23b2e'  # obstacle    - red
+
+semantic_map:
+  0: unlabeled
+  1: traversable
+  2: obstacle

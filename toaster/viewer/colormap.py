@@ -1,0 +1,76 @@
+"""Colour helpers: turn labels / groupings / scalars into ``(N, 3)`` uint8 buffers.
+
+All vectorized (LUT indexing, no Python per-point loops) so they stay cheap at
+hundreds of thousands of points.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from toaster.core import Grouping, LabelSchema
+
+__all__ = [
+    "colors_from_labels",
+    "colors_from_grouping",
+    "colors_from_scalar",
+    "group_color",
+    "GROUP_NOISE_COLOR",
+]
+
+#: Colour drawn for noise / unassigned points when colouring by grouping.
+GROUP_NOISE_COLOR = np.array([74, 80, 92], dtype=np.uint8)
+
+# A muted, colourblind-safe categorical palette (Paul Tol "muted" + "light"),
+# kept in sync with web/js/colors.js. Sober tones that read well on dark.
+_GROUP_PALETTE = np.array(
+    [
+        [51, 34, 136], [136, 204, 238], [68, 170, 153], [17, 119, 51],
+        [153, 153, 51], [221, 204, 119], [204, 102, 119], [136, 34, 85],
+        [170, 68, 153], [119, 170, 221], [102, 204, 170], [187, 204, 51],
+        [238, 221, 136], [255, 170, 187], [153, 221, 255], [170, 170, 170],
+    ],
+    dtype=np.uint8,
+)  # fmt: skip
+
+
+def group_color(group_id: int) -> tuple[int, int, int]:
+    """The display colour of one group — matches :func:`colors_from_grouping`."""
+    if group_id < 0:
+        return tuple(int(c) for c in GROUP_NOISE_COLOR)
+    return tuple(int(c) for c in _GROUP_PALETTE[group_id % len(_GROUP_PALETTE)])
+
+
+def colors_from_labels(labels: np.ndarray, schema: LabelSchema) -> np.ndarray:
+    """``(N, 3)`` uint8 colours for a label array, via the schema LUT."""
+    return schema.colors_for(labels)
+
+
+def colors_from_grouping(grouping: Grouping) -> np.ndarray:
+    """``(N, 3)`` uint8 colours for a grouping; noise is grey, groups cycle a palette."""
+    gid = grouping.group_id
+    colors = np.empty((gid.shape[0], 3), dtype=np.uint8)
+    noise = gid < 0
+    colors[noise] = GROUP_NOISE_COLOR
+    real = ~noise
+    colors[real] = _GROUP_PALETTE[gid[real] % len(_GROUP_PALETTE)]
+    return colors
+
+
+def colors_from_scalar(values: np.ndarray, cmap: str = "viridis") -> np.ndarray:
+    """``(N, 3)`` uint8 colours from a scalar channel (e.g. intensity/height).
+
+    Normalises to the 2nd–98th percentile to resist outliers. Falls back to a
+    plain grey ramp if matplotlib is unavailable.
+    """
+    values = np.asarray(values, dtype=np.float64).ravel()
+    lo, hi = np.percentile(values, [2, 98]) if values.size else (0.0, 1.0)
+    norm = np.clip((values - lo) / (hi - lo + 1e-12), 0.0, 1.0)
+    try:
+        from matplotlib import colormaps
+
+        rgba = colormaps[cmap](norm)
+        return (rgba[:, :3] * 255).astype(np.uint8)
+    except Exception:
+        grey = (norm * 255).astype(np.uint8)
+        return np.stack([grey, grey, grey], axis=1)

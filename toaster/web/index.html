@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TOASTER</title>
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header id="toolbar">
+      <span class="logo">
+        <!-- Default — a toaster whose toast gently bobs. -->
+        <span class="logo-art" data-logo="toaster">
+          <svg viewBox="0 0 64 64" width="24" height="24" aria-hidden="true">
+            <g class="toast">
+              <rect x="21" y="7" width="8" height="15" rx="2" fill="var(--accent)" />
+              <rect x="34" y="5" width="8" height="17" rx="2" fill="var(--accent)" />
+            </g>
+            <path d="M9 31 Q9 22 18 22 H46 Q55 22 55 31 V47 Q55 52 50 52 H14 Q9 52 9 47 Z"
+                  fill="#161616" stroke="currentColor" stroke-width="3" />
+            <rect x="18" y="29" width="28" height="3.5" rx="1.7" fill="currentColor" />
+            <rect x="56" y="32" width="4" height="11" rx="2" fill="currentColor" />
+            <rect x="16" y="52" width="5" height="5" fill="currentColor" />
+            <rect x="43" y="52" width="5" height="5" fill="currentColor" />
+          </svg>
+        </span>
+        <!-- Café Toaster — a coffee cup with rising steam. -->
+        <span class="logo-art" data-logo="cafe">
+          <svg viewBox="0 0 64 64" width="24" height="24" aria-hidden="true">
+            <g class="steam" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round">
+              <path d="M25 19 q-5 -5 0 -10" />
+              <path d="M35 19 q5 -5 0 -10" />
+            </g>
+            <ellipse cx="30" cy="27" rx="15" ry="2.6" fill="var(--accent)" opacity="0.5" />
+            <path d="M15 26 H45 V39 Q45 52 33 52 H27 Q15 52 15 39 Z"
+                  fill="#1a1206" stroke="currentColor" stroke-width="3" />
+            <path d="M45 30 H52 Q58 30 58 37 Q58 44 49 44 H45"
+                  fill="none" stroke="currentColor" stroke-width="3" />
+            <rect x="11" y="54" width="40" height="4" rx="2" fill="currentColor" />
+          </svg>
+        </span>
+        <!-- Arcade Quest — a pixel invader that hops. -->
+        <span class="logo-art" data-logo="arcade">
+          <svg viewBox="0 0 64 64" width="24" height="24" aria-hidden="true" shape-rendering="crispEdges">
+            <g class="invader" fill="var(--accent)">
+              <rect x="16" y="14" width="8" height="8" />
+              <rect x="40" y="14" width="8" height="8" />
+              <rect x="24" y="22" width="16" height="8" />
+              <rect x="8" y="22" width="8" height="8" />
+              <rect x="48" y="22" width="8" height="8" />
+              <rect x="8" y="30" width="48" height="8" />
+              <rect x="16" y="38" width="8" height="8" />
+              <rect x="40" y="38" width="8" height="8" />
+              <rect x="24" y="46" width="6" height="6" />
+              <rect x="34" y="46" width="6" height="6" />
+              <rect x="24" y="22" width="6" height="8" fill="#050507" />
+              <rect x="34" y="22" width="6" height="8" fill="#050507" />
+            </g>
+          </svg>
+        </span>
+        <b>TOASTER</b>
+      </span>
+      <span class="sep"></span>
+      <button id="open-file" title="Open a point cloud from a folder">Open</button>
+      <button data-act="assign">Assign</button>
+      <button data-act="undo">Undo</button>
+      <button data-act="redo">Redo</button>
+      <button data-act="save">Save</button>
+      <span class="sep"></span>
+      <span class="group" id="modes"></span>
+      <span class="sep"></span>
+      <button data-mode-pick="point" class="toggle active">Point</button>
+      <button data-mode-pick="box" class="toggle">Box</button>
+      <button data-mode-pick="voxel" class="toggle">Voxel</button>
+      <span class="spacer"></span>
+      <span id="status">loading…</span>
+      <span class="sep"></span>
+      <select id="theme" title="Theme">
+        <option value="toaster">Toaster</option>
+        <option value="cafe">Café Toaster</option>
+        <option value="arcade">Arcade Quest</option>
+      </select>
+    </header>
+    <div id="loading"><div class="bar"></div></div>
+
+    <main>
+      <div id="viewport"></div>
+
+      <div class="window" id="win-classes" style="left: 14px; top: 52px; width: 248px">
+        <div class="titlebar">
+          Classes
+          <button class="gear" data-open="win-class-manager" title="Manage classes">⚙</button>
+        </div>
+        <div class="body"><div id="classes" class="list"></div></div>
+      </div>
+
+      <div class="window" id="win-class-manager" style="left: 290px; top: 52px; width: 250px; display: none">
+        <div class="titlebar">
+          Manage classes
+          <button class="x" data-close="win-class-manager">×</button>
+        </div>
+        <div class="body">
+          <div id="class-manager" class="list"></div>
+          <div class="row">
+            <button id="cls-rename">Rename</button>
+            <button id="cls-remove">Remove</button>
+          </div>
+          <button id="cls-add" class="primary">+ Add class</button>
+        </div>
+      </div>
+
+      <div class="window" id="win-segmenter" style="left: 14px; top: 250px; width: 248px">
+        <div class="titlebar">Segmenter</div>
+        <div class="body">
+          <select id="seg-name"></select>
+          <div id="seg-params"></div>
+          <label class="row"><input id="seg-scope" type="checkbox" checked /> On selection only</label>
+          <button id="seg-run" class="primary">Run</button>
+        </div>
+      </div>
+
+      <div class="window" id="win-display" style="left: 14px; top: 446px; width: 248px">
+        <div class="titlebar">Display</div>
+        <div class="body">
+          <label class="row">Size <input id="psize" type="range" min="1" max="12" value="3" /></label>
+          <label class="row"><input id="round" type="checkbox" /> Round points</label>
+        </div>
+      </div>
+
+      <div class="window" id="win-voxel" style="left: 290px; top: 52px; width: 218px; display: none">
+        <div class="titlebar">Voxels</div>
+        <div class="body">
+          <label class="row">Size <input id="vox-size" type="number" min="0.05" step="0.05" value="0.5" /></label>
+          <label class="row"><input id="vox-grid" type="checkbox" checked /> Show grid</label>
+          <label class="row"><input id="vox-empty" type="checkbox" /> Show empty cells</label>
+          <div id="vox-info" class="muted"></div>
+        </div>
+      </div>
+
+      <div class="window" id="win-inspector" style="left: 14px; bottom: 28px; width: 248px">
+        <div class="titlebar">Inspector</div>
+        <div class="body"><div id="inspector"></div></div>
+      </div>
+
+      <div class="window" id="win-groups" style="right: 14px; top: 52px; width: 256px; display: none">
+        <div class="titlebar">
+          <span id="groups-header">Segments</span>
+          <button class="x" id="grp-close" title="Discard this segmentation">×</button>
+        </div>
+        <div class="body grow">
+          <div id="groups" class="list grow"></div>
+          <div class="row">
+            <button id="grp-showall" title="Colour every segment">Show all</button>
+            <button id="grp-hideall" title="Grey out every segment">Hide all</button>
+          </div>
+          <button id="grp-assign" class="primary" title="Label every checked (visible) segment with the active class">
+            Assign checked
+          </button>
+          <div class="muted" style="padding: 4px 2px">Check the segments you want, then Assign — or double-click one to label it.</div>
+        </div>
+      </div>
+
+      <div class="window" id="win-open" style="left: 320px; top: 70px; width: 480px; display: none">
+        <div class="titlebar">
+          Open a point cloud
+          <button class="x" data-close="win-open">×</button>
+        </div>
+        <div class="body">
+          <input id="open-input" type="text" spellcheck="false" autocomplete="off"
+                 placeholder="/path/to/cloud — Tab completes, Enter opens"
+                 style="width: 100%; margin-bottom: 6px" />
+          <div id="open-list" class="list" style="max-height: 360px; overflow: auto"></div>
+        </div>
+      </div>
+
+      <div id="rubber"></div>
+    </main>
+    <div id="crt"></div>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

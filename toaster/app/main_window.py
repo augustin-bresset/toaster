@@ -22,7 +22,7 @@ from toaster.io import load_cloud, supported_extensions
 from toaster.persistence import LabelStore, SchemaStore, SessionStore
 from toaster.viewer import PyVistaViewer
 
-from .panels import ClassPalette, DisplayPanel, LayersPanel, SegmenterPanel
+from .panels import ClassPalette, DisplayPanel, GroupsPanel, LayersPanel, SegmenterPanel
 from .schema_loader import builtin_schema
 
 __all__ = ["MainWindow"]
@@ -57,9 +57,11 @@ class MainWindow(QMainWindow):
             point_size=self.viewer.point_size, as_spheres=self.viewer.render_points_as_spheres
         )
         self.layers_panel = LayersPanel()
+        self.groups_panel = GroupsPanel()
         self._add_dock("Classes", self.palette)
         self._add_dock("Display", self.display_panel)
         self._add_dock("Segmenter", self.segmenter_panel)
+        self._add_dock("Groups", self.groups_panel)
         self._add_dock("Session", self.layers_panel)
 
         self.palette.class_selected.connect(self._on_class_selected)
@@ -73,6 +75,10 @@ class MainWindow(QMainWindow):
         )
         self.segmenter_panel.run_requested.connect(self._on_run_segmenter)
         self.layers_panel.active_grouping_changed.connect(self._on_active_grouping_changed)
+        self.groups_panel.group_selected.connect(self._on_group_selected)
+        self.groups_panel.assign_active_requested.connect(self._on_assign_group_active)
+        self.groups_panel.assign_suggested_requested.connect(self._on_assign_group_suggested)
+        self.groups_panel.assign_all_suggested_requested.connect(self._on_assign_all_suggested)
 
         self._build_menus()
         self._build_toolbar()
@@ -364,8 +370,36 @@ class MainWindow(QMainWindow):
         if self._session is None:
             return
         self._session.set_active_grouping(index)
+        self.groups_panel.refresh(self._session)
         if self._controller.display_mode == "grouping":
             self._controller.refresh_display()
+
+    def _on_group_selected(self, group_id: int) -> None:
+        if self._controller:
+            self._controller.select_group(group_id)
+
+    def _on_assign_group_active(self, group_id: int) -> None:
+        if self._controller is None:
+            return
+        n = self._controller.assign_group(group_id)
+        self.statusBar().showMessage(f"Labelled segment #{group_id} ({n:,} pts)")
+
+    def _on_assign_group_suggested(self, group_id: int) -> None:
+        if self._controller is None:
+            return
+        n = self._controller.apply_suggested(group_id)
+        msg = (
+            f"Applied suggestion to segment #{group_id} ({n:,} pts)"
+            if n
+            else f"Segment #{group_id} has no suggested class"
+        )
+        self.statusBar().showMessage(msg)
+
+    def _on_assign_all_suggested(self) -> None:
+        if self._controller is None:
+            return
+        n = self._controller.apply_suggested(None)
+        self.statusBar().showMessage(f"Applied all suggestions ({n:,} pts)")
 
     # -- view actions -----------------------------------------------------
 
@@ -388,6 +422,7 @@ class MainWindow(QMainWindow):
         if self._session is None:
             return
         self.layers_panel.refresh(self._session)
+        self.groups_panel.refresh(self._session)
         sel = self._session.selection
         try:
             class_name = self.schema.get(self._session.active_class).name

@@ -93,6 +93,58 @@ def test_assign_writes_labels_and_recolors(two_clusters, schema):
     assert session.selection.is_empty()
 
 
+def _grouped_session(two_clusters, schema):
+    """Session with a 2-group grouping active (group 0 = first 50, group 1 = rest)."""
+    two_clusters.ensure_labels(schema.unlabeled_id)
+    session = Session(two_clusters, schema)
+    gid = np.where(np.arange(two_clusters.n) < 50, 0, 1).astype(np.int32)
+    session.add_grouping(Grouping(gid, suggested_labels={1: 2}))
+    return session
+
+
+def test_select_group_selects_whole_segment(two_clusters, schema):
+    session = _grouped_session(two_clusters, schema)
+    ctl = InteractionController(session, FakeViewer())
+    ctl.select_group(0)
+    assert session.selection.count == 50
+    assert session.selection.indices.max() < 50
+
+
+def test_assign_group_labels_the_segment(two_clusters, schema):
+    session = _grouped_session(two_clusters, schema)
+    viewer = FakeViewer()
+    ctl = InteractionController(session, viewer)
+    ctl.set_active_class(1)
+    n = ctl.assign_group(0)
+    assert n == 50
+    assert (session.cloud.labels[:50] == 1).all()
+    assert (session.cloud.labels[50:] == 0).all()
+    assert viewer.recolored  # labelled points are repainted in any view
+
+
+def test_apply_suggested_single_and_all(two_clusters, schema):
+    session = _grouped_session(two_clusters, schema)
+    ctl = InteractionController(session, FakeViewer())
+    # Only group 1 carries a suggestion (-> class 2).
+    n = ctl.apply_suggested(1)
+    assert n == 50
+    assert (session.cloud.labels[50:] == 2).all()
+    # Group 0 has no suggestion -> no-op.
+    assert ctl.apply_suggested(0) == 0
+    # "All suggested" applies every group that has one.
+    session2 = _grouped_session(two_clusters, schema)
+    ctl2 = InteractionController(session2, FakeViewer())
+    assert ctl2.apply_suggested(None) == 50
+
+
+def test_group_ops_noop_without_active_grouping(two_clusters, schema):
+    two_clusters.ensure_labels(schema.unlabeled_id)
+    session = Session(two_clusters, schema)  # no grouping
+    ctl = InteractionController(session, FakeViewer())
+    assert ctl.assign_group(0) == 0
+    assert ctl.apply_suggested() == 0
+
+
 def test_run_segmenter_sets_active_grouping(two_clusters, schema):
     from toaster.segment import get_segmenter
 

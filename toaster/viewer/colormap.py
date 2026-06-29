@@ -10,7 +10,13 @@ import numpy as np
 
 from toaster.core import Grouping, LabelSchema
 
-__all__ = ["colors_from_labels", "colors_from_grouping", "colors_from_scalar", "GROUP_NOISE_COLOR"]
+__all__ = [
+    "colors_from_labels",
+    "colors_from_grouping",
+    "colors_from_scalar",
+    "group_color",
+    "GROUP_NOISE_COLOR",
+]
 
 #: Colour drawn for noise / unassigned points when colouring by grouping.
 GROUP_NOISE_COLOR = np.array([90, 90, 90], dtype=np.uint8)
@@ -26,6 +32,13 @@ _GROUP_PALETTE = np.array(
     ],
     dtype=np.uint8,
 )  # fmt: skip
+
+
+def group_color(group_id: int) -> tuple[int, int, int]:
+    """The display colour of one group — matches :func:`colors_from_grouping`."""
+    if group_id < 0:
+        return tuple(int(c) for c in GROUP_NOISE_COLOR)
+    return tuple(int(c) for c in _GROUP_PALETTE[group_id % len(_GROUP_PALETTE)])
 
 
 def colors_from_labels(labels: np.ndarray, schema: LabelSchema) -> np.ndarray:

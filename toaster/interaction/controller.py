@@ -153,6 +153,56 @@ class InteractionController:
         self.set_display_mode("grouping")
         self._changed()
 
+    # -- per-group operations (drive the Groups panel) --------------------
+
+    def select_group(self, group_id: int, modifiers: Modifiers = frozenset()) -> None:
+        """Select every point of one segment of the active grouping."""
+        grouping = self.session.active_grouping
+        if grouping is None:
+            return
+        self._apply_selection(Selection.from_group(grouping, group_id), modifiers)
+
+    def assign_group(self, group_id: int, class_id: int | None = None) -> int:
+        """Label a whole segment with the active (or given) class. Returns points labelled."""
+        grouping = self.session.active_grouping
+        if grouping is None:
+            return 0
+        cid = self.session.active_class if class_id is None else class_id
+        touched = self.session.annotation.assign(Selection.from_group(grouping, group_id), cid)
+        if touched.size:
+            self._paint_labels(touched)
+        self._changed()
+        return int(touched.size)
+
+    def apply_suggested(self, group_id: int | None = None) -> int:
+        """Accept model predictions: label group(s) with their ``suggested_labels``.
+
+        With ``group_id`` set, only that segment; otherwise every segment that
+        carries a suggestion. Returns the number of points labelled.
+        """
+        grouping = self.session.active_grouping
+        if grouping is None or not grouping.suggested_labels:
+            return 0
+        if group_id is not None:
+            suggestion = grouping.suggested_labels.get(group_id)
+            items = [(group_id, suggestion)] if suggestion is not None else []
+        else:
+            items = list(grouping.suggested_labels.items())
+        total = 0
+        for gid, cid in items:
+            touched = self.session.annotation.assign(Selection.from_group(grouping, gid), cid)
+            if touched.size:
+                self._paint_labels(touched)
+                total += int(touched.size)
+        self._changed()
+        return total
+
+    def _paint_labels(self, indices: np.ndarray) -> None:
+        # Recolour assigned points to their class colour in *any* view, so a
+        # labelled segment is visibly "consumed" even while colouring by grouping.
+        labels = self.session.cloud.labels[indices]
+        self.viewer.update_colors(indices, self.session.schema.colors_for(labels))
+
     # -- helpers ----------------------------------------------------------
 
     def _changed(self) -> None:

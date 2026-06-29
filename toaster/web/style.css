@@ -24,29 +24,40 @@ body {
   box-shadow: 0 2px 14px rgba(225, 6, 0, 0.35); /* heating-element glow */
 }
 
-/* The top neon "bugs": a quick flicker when a point is labelled, and a stronger
-   glitch when a segmenter finishes. Both are theme-aware (use --accent). */
-#toolbar.flicker { animation: neon-flicker 0.45s 1; }
+/* Only the bottom neon line grésille — like a real neon tube cutting in and out.
+   Hard on/off steps (no fade), and only border + glow change (the bar's content
+   is untouched). Theme-aware via --accent; reverts to the steady glow on end. */
+#toolbar.flicker { animation: neon-flicker 0.5s steps(1, end) 1; }
 @keyframes neon-flicker {
-  0%, 100% { filter: none; border-bottom-color: var(--accent); }
-  10% { filter: brightness(2.2); border-bottom-color: #fff; box-shadow: 0 2px 22px var(--accent); }
-  22% { filter: brightness(0.4); border-bottom-color: transparent; box-shadow: none; }
-  38% { filter: brightness(1.8); border-bottom-color: var(--accent); box-shadow: 0 2px 18px var(--accent); }
-  54% { filter: brightness(0.55); border-bottom-color: transparent; box-shadow: none; }
-  72% { filter: brightness(1.3); border-bottom-color: var(--accent); }
+  0%, 100% { border-bottom-color: var(--accent); box-shadow: 0 2px 16px var(--accent); }
+  9% { border-bottom-color: transparent; box-shadow: none; }
+  15% { border-bottom-color: var(--accent); box-shadow: 0 2px 20px var(--accent); }
+  21% { border-bottom-color: transparent; box-shadow: none; }
+  27% { border-bottom-color: var(--accent); box-shadow: 0 2px 14px var(--accent); }
+  45% { border-bottom-color: var(--accent); box-shadow: 0 2px 22px var(--accent); }
+  50% { border-bottom-color: transparent; box-shadow: none; }
+  56% { border-bottom-color: var(--accent); box-shadow: 0 2px 16px var(--accent); }
 }
-#toolbar.glitch { animation: neon-glitch 0.8s steps(1, end) 1; }
+#toolbar.glitch { animation: neon-glitch 1.1s steps(1, end) 1; }
 @keyframes neon-glitch {
-  0%, 100% { filter: none; clip-path: none; border-bottom-color: var(--accent); }
-  6% { filter: brightness(2.6) contrast(1.3); border-bottom-color: #fff; box-shadow: 0 2px 28px var(--accent); }
-  13% { filter: brightness(0.25); border-bottom-color: transparent; box-shadow: none; clip-path: inset(0 0 45% 0); }
-  21% { filter: brightness(2.1); border-bottom-color: var(--accent); clip-path: inset(40% 0 0 0); }
-  30% { filter: brightness(0.4); border-bottom-color: transparent; box-shadow: none; clip-path: none; }
-  40% { filter: brightness(1.9); border-bottom-color: var(--accent); box-shadow: 0 2px 22px var(--accent); }
-  50% { filter: brightness(0.5); border-bottom-color: transparent; box-shadow: none; }
-  61% { filter: brightness(1.8); border-bottom-color: var(--accent); clip-path: inset(0 0 25% 0); }
-  72% { filter: brightness(0.7); clip-path: none; }
-  86% { filter: brightness(1.3); border-bottom-color: var(--accent); }
+  0%, 100% { border-bottom-color: var(--accent); box-shadow: 0 2px 16px var(--accent); }
+  4% { border-bottom-color: transparent; box-shadow: none; }
+  8% { border-bottom-color: var(--accent); box-shadow: 0 2px 26px var(--accent); }
+  11% { border-bottom-color: transparent; box-shadow: none; }
+  15% { border-bottom-color: var(--accent); box-shadow: 0 2px 14px var(--accent); }
+  18% { border-bottom-color: transparent; box-shadow: none; }
+  20% { border-bottom-color: var(--accent); box-shadow: 0 2px 30px var(--accent); }
+  24% { border-bottom-color: transparent; box-shadow: none; }
+  30% { border-bottom-color: var(--accent); box-shadow: 0 2px 18px var(--accent); }
+  38% { border-bottom-color: transparent; box-shadow: none; }
+  42% { border-bottom-color: var(--accent); box-shadow: 0 2px 24px var(--accent); }
+  46% { border-bottom-color: transparent; box-shadow: none; }
+  52% { border-bottom-color: var(--accent); box-shadow: 0 2px 16px var(--accent); }
+  60% { border-bottom-color: var(--accent); box-shadow: 0 2px 28px var(--accent); }
+  64% { border-bottom-color: transparent; box-shadow: none; }
+  70% { border-bottom-color: var(--accent); box-shadow: 0 2px 16px var(--accent); }
+  82% { border-bottom-color: transparent; box-shadow: none; }
+  86% { border-bottom-color: var(--accent); box-shadow: 0 2px 20px var(--accent); }
 }
 @media (prefers-reduced-motion: reduce) {
   #toolbar.flicker, #toolbar.glitch { animation: none; }

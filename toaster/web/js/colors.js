@@ -49,11 +49,17 @@ export function computeColors(decoded, cloud) {
   if (mode === "grouping" && grouping) {
     // Segments toggled off (Hide all / Solo / a row's checkbox) are not removed —
     // they go grey, so the focused segment(s) pop while the rest stay as context.
+    // But greying must never hide the work: a point that already carries a label
+    // (traversable / obstacle / …) keeps its class colour even when greyed.
     const hidden = new Set(snap.segments.filter((s) => !s.visible).map((s) => s.id));
+    const lut = {};
+    for (const c of snap.classes) lut[c.id] = c.color;
+    const unlabeled = snap.unlabeled_id;
     for (let i = 0; i < n; i++) {
       const g = grouping[i];
-      if (hidden.has(g)) setRGB(colors, i, DIM);
-      else setRGB(colors, i, g < 0 ? NOISE : GROUP_PALETTE[g % GROUP_PALETTE.length]);
+      if (!hidden.has(g)) setRGB(colors, i, g < 0 ? NOISE : GROUP_PALETTE[g % GROUP_PALETTE.length]);
+      else if (labels[i] !== unlabeled) setRGB(colors, i, lut[labels[i]] || DIM);
+      else setRGB(colors, i, DIM);
     }
   } else if (mode === "intensity" && cloud.features.intensity) {
     rampInto(colors, cloud.features.intensity);

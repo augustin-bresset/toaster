@@ -1,6 +1,7 @@
-// Compute per-point colours (and visibility alpha) from the semantic state the
-// API returns — the same job toaster.viewer.colormap does in Python, here on the
-// client so the wire only carries labels/grouping, never colour buffers.
+// Compute per-point colours from the semantic state the API returns — the same
+// job toaster.viewer.colormap does in Python, here on the client so the wire only
+// carries labels/grouping, never colour buffers. Alpha is kept at 1 for every
+// point (nothing is hidden); de-emphasised segments are greyed, not removed.
 
 // Kept in sync with toaster/viewer/colormap.py (_GROUP_PALETTE).
 const GROUP_PALETTE = [
@@ -11,6 +12,7 @@ const GROUP_PALETTE = [
 ];
 const NOISE = [74, 80, 92];
 const UNKNOWN = [60, 64, 74];
+const DIM = [92, 96, 106]; // greyed-out (non-focused) segment — visible, not hidden
 
 function setRGB(out, i, c) {
   out[i * 3] = c[0] / 255;
@@ -41,18 +43,17 @@ export function computeColors(decoded, cloud) {
   const grouping = decoded.grouping;
   const n = labels.length;
   const colors = new Float32Array(n * 3);
-  const alpha = new Float32Array(n).fill(1);
-
-  const hidden = new Set(snap.segments.filter((s) => !s.visible).map((s) => s.id));
-  if (grouping && hidden.size) {
-    for (let i = 0; i < n; i++) if (hidden.has(grouping[i])) alpha[i] = 0;
-  }
+  const alpha = new Float32Array(n).fill(1); // every point stays visible & pickable
 
   const mode = snap.display_mode;
   if (mode === "grouping" && grouping) {
+    // Segments toggled off (Hide all / Solo / a row's checkbox) are not removed —
+    // they go grey, so the focused segment(s) pop while the rest stay as context.
+    const hidden = new Set(snap.segments.filter((s) => !s.visible).map((s) => s.id));
     for (let i = 0; i < n; i++) {
       const g = grouping[i];
-      setRGB(colors, i, g < 0 ? NOISE : GROUP_PALETTE[g % GROUP_PALETTE.length]);
+      if (hidden.has(g)) setRGB(colors, i, DIM);
+      else setRGB(colors, i, g < 0 ? NOISE : GROUP_PALETTE[g % GROUP_PALETTE.length]);
     }
   } else if (mode === "intensity" && cloud.features.intensity) {
     rampInto(colors, cloud.features.intensity);

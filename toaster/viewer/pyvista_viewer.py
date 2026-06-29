@@ -204,6 +204,15 @@ class PyVistaViewer:
         """
         from vtkmodules.vtkRenderingCore import vtkPointPicker
 
+        # Box (cell) picking installs a rubber-band interactor style, and
+        # disable_picking() does not restore it — so without this the camera
+        # would stay stuck (no orbit) after a single box→point switch. Bring the
+        # trackball camera style back before re-arming click-to-select.
+        try:
+            self.plotter.enable_trackball_style()
+        except Exception:
+            pass
+
         if self._picker is None:
             self._picker = vtkPointPicker()
             self._picker.SetTolerance(0.025)

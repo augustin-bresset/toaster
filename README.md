@@ -29,9 +29,13 @@ Optional extras: `apairo` (load apairo datasets), `open3d` (robust `.pcd`),
 
 ## Run the app
 
+`toaster` opens a native desktop window (the web UI in a pywebview shell);
+`toaster-web` serves the same UI for a plain browser.
+
 ```bash
-toaster path/to/cloud.ply          # or .bin / .las / .laz / .pcd
-toaster cloud.ply --schema my_classes.yaml
+python examples/make_sample.py     # writes examples/sample.bin
+toaster examples/sample.bin        # native window — or .ply / .las / .laz / .pcd
+toaster-web examples/sample.bin    # then open http://127.0.0.1:8000
 ```
 
 - Left-click a point to select it (whole cluster, if a grouping is active).

@@ -10,6 +10,7 @@ plain browser instead.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import socket
 import sys
 import threading
@@ -64,7 +65,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     webview.create_window("TOASTER", f"http://127.0.0.1:{port}/", width=1320, height=860)
-    webview.start()  # blocks until the window is closed
+    # Pick the backend explicitly so pywebview does not noisily try (and fail)
+    # GTK before falling back to Qt when WebKitGTK is not installed.
+    gui = "gtk" if importlib.util.find_spec("gi") is not None else "qt"
+    webview.start(gui=gui)  # blocks until the window is closed
     server.should_exit = True
     return 0
 

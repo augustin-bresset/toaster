@@ -118,6 +118,10 @@ main { flex: 1; position: relative; min-height: 0; overflow: hidden; }
 .swatch-input::-webkit-color-swatch { border: none; }
 .swatch-input::-moz-color-swatch { border: none; }
 
+.kv { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.kv .count { margin-left: auto; color: var(--muted); font-family: ui-monospace, monospace; }
+.muted { color: var(--muted); }
+
 #rubber {
   position: fixed; border: 2px solid var(--accent);
   background: rgba(225, 6, 0, 0.15); pointer-events: none; display: none; z-index: 50;

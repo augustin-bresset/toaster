@@ -32,7 +32,7 @@ hdbscan = ["hdbscan"]
 models = ["onnxruntime-gpu"]
 torch = ["torch"]
 viewer3d = ["pyvista"]  # legacy VTK Viewer backend (toaster.viewer.PyVistaViewer)
-dev = ["pytest", "ruff", "httpx"]
+dev = ["pytest", "ruff", "httpx", "playwright"]  # playwright: `playwright install chromium`
 
 [project.scripts]
 toaster = "toaster.desktop:main"

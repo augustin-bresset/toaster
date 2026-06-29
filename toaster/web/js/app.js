@@ -52,12 +52,46 @@ function applyState(raw) {
   renderClasses();
   renderModes();
   renderGroups();
+  renderInspector();
   const s = state.snapshot;
   el("status").textContent =
     `Sel: ${state.selection.length.toLocaleString()} · Class: ${className(s.active_class)} · View: ${s.display_mode}`;
 }
 
 const className = (id) => (state.snapshot.classes.find((c) => c.id === id) || {}).name || String(id);
+const classColor = (id) =>
+  (state.snapshot.classes.find((c) => c.id === id) || { color: [120, 120, 120] }).color;
+
+// Show details of the current selection: a single point's label + position, or
+// the count and per-label distribution of a multi-point (box) selection.
+function renderInspector() {
+  const box = el("inspector");
+  const sel = state.selection;
+  const labels = state.labels;
+  if (sel.length === 0) {
+    box.innerHTML = '<div class="muted">No selection</div>';
+    return;
+  }
+  if (sel.length === 1) {
+    const i = sel[0];
+    const x = cloud.xyz;
+    box.innerHTML =
+      `<div>Point <b>#${i}</b></div>` +
+      `<div class="kv">pos <span class="count">${x[i * 3].toFixed(2)}, ${x[i * 3 + 1].toFixed(2)}, ${x[i * 3 + 2].toFixed(2)}</span></div>` +
+      `<div class="kv"><span class="swatch" style="background:${rgb(classColor(labels[i]))}"></span>${className(labels[i])}</div>`;
+    return;
+  }
+  const counts = {};
+  for (let k = 0; k < sel.length; k++) counts[labels[sel[k]]] = (counts[labels[sel[k]]] || 0) + 1;
+  const rows = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(
+      ([id, c]) =>
+        `<div class="kv"><span class="swatch" style="background:${rgb(classColor(+id))}"></span>${className(+id)}<span class="count">${c.toLocaleString()}</span></div>`,
+    )
+    .join("");
+  box.innerHTML = `<div><b>${sel.length.toLocaleString()}</b> points selected</div>${rows}`;
+}
 
 // -- panels -----------------------------------------------------------------
 

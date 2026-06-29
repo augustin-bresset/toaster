@@ -19,11 +19,10 @@ dependencies = [
     "plyfile",
     "fastapi",
     "uvicorn[standard]",
-    "pywebview",
-    # Webview host for the desktop window. On Linux this uses QtWebEngine; for a
-    # fully Qt-free host install system WebKitGTK and drop these two.
-    "PySide6",
-    "qtpy",  # pywebview's Qt backend imports qtpy to abstract over PySide6/PyQt
+    # Webview host for the desktop window. The pyside6 extra pulls PySide6 (LGPL,
+    # with QtWebEngine) and the qtpy shim pywebview's Qt backend imports. For a
+    # fully Qt-free host install system WebKitGTK and drop this to a bare pywebview.
+    "pywebview[pyside6]",
 ]
 
 [project.optional-dependencies]

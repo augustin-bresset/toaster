@@ -275,11 +275,6 @@ function renderGroups() {
   el("groups-header").textContent = state.snapshot.active_grouping
     ? `${state.snapshot.active_grouping.n_groups} segments · ${state.snapshot.active_grouping.source}`
     : "Segments — run a segmenter";
-  // "Suggest" only makes sense when the grouping carries model predictions
-  // (ground detectors, model segmenters); plain clusterers have none.
-  const hasSug = !!state.snapshot.has_suggestions;
-  el("grp-suggested").disabled = !hasSug;
-  el("grp-suggest-all").disabled = !hasSug;
   for (const seg of segs) {
     const row = document.createElement("div");
     row.className = "item" + (seg.id === currentGroup ? " active" : "");
@@ -293,8 +288,7 @@ function renderGroups() {
     sw.className = "swatch";
     sw.style.background = rgb(seg.color);
     const label = document.createElement("span");
-    label.textContent =
-      `#${seg.id}` + (seg.suggested != null ? ` → ${className(seg.suggested)}` : "");
+    label.textContent = `#${seg.id}`;
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = seg.count.toLocaleString();
@@ -423,9 +417,6 @@ function wire() {
   el("grp-solo").onclick = () => withGroup((g) => api.groupSolo(g).then(applyState));
   el("grp-showall").onclick = () => api.groupsShowAll().then(applyState);
   el("grp-hideall").onclick = () => api.groupsHideAll().then(applyState);
-  el("grp-assign").onclick = () => withGroup((g) => api.groupAssign(g).then(applyState));
-  el("grp-suggested").onclick = () => withGroup((g) => api.groupSuggested(g).then(applyState));
-  el("grp-suggest-all").onclick = () => api.groupSuggested(null).then(applyState);
   // Closing the Segments window discards the (transient) segmentation entirely.
   el("grp-close").onclick = () => {
     currentGroup = null;
@@ -664,6 +655,19 @@ function setupPointer() {
       api.pick(i, mods).then(applyState);
     }
   });
+
+  // Double-click = label in one gesture: select what a click would select
+  // (the whole group if a grouping is active, the voxel in voxel mode, else the
+  // single point) and stamp it with the active class.
+  dom.addEventListener("dblclick", labelUnderCursor);
+}
+
+async function labelUnderCursor(e) {
+  if (!state) return;
+  const i = viewer.pick(e.clientX, e.clientY);
+  if (i < 0) return;
+  applyState(pickMode === "voxel" ? await api.box(voxelIndicesOf(i), []) : await api.pick(i, []));
+  await act("assign");
 }
 
 function updateRubber(rubber, a, b) {

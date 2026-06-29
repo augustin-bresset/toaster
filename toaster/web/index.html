@@ -181,8 +181,10 @@
           <button class="x" data-close="win-open">×</button>
         </div>
         <div class="body">
-          <div id="open-path" class="muted" style="padding: 2px 2px 6px; word-break: break-all"></div>
-          <div id="open-list" class="list" style="max-height: 380px; overflow: auto"></div>
+          <input id="open-input" type="text" spellcheck="false" autocomplete="off"
+                 placeholder="/path/to/cloud — Tab completes, Enter opens"
+                 style="width: 100%; margin-bottom: 6px" />
+          <div id="open-list" class="list" style="max-height: 360px; overflow: auto"></div>
         </div>
       </div>
 

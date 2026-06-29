@@ -171,6 +171,7 @@ async function loadCloud() {
 // -- file browser (Open without a path, then find the cloud in a folder) ----
 
 let openDir = null; // the folder currently shown in the browser
+let openExts = []; // extensions a loader can open (from /api/browse), e.g. [".ply", ".bin"]
 
 async function openBrowser(path) {
   let data;
@@ -181,25 +182,82 @@ async function openBrowser(path) {
     return;
   }
   openDir = data.path;
-  el("open-path").textContent = data.path;
+  openExts = data.extensions || openExts;
+  el("open-input").value = data.path;
+  renderEntries(data, "");
+  const w = el("win-open");
+  w.style.display = "flex";
+  w.style.zIndex = ++topZ;
+  el("open-input").focus();
+}
+
+// Render a folder's entries, optionally keeping only those starting with `filter`.
+function renderEntries(data, filter) {
   const list = el("open-list");
   list.innerHTML = "";
-  if (data.parent) list.appendChild(browseRow("..", () => openBrowser(data.parent)));
+  if (data.parent && !filter) list.appendChild(browseRow("..", () => openBrowser(data.parent)));
+  let shown = 0;
   for (const e of data.entries) {
+    if (filter && !e.name.startsWith(filter)) continue;
+    shown++;
     if (e.is_dir) list.appendChild(browseRow(e.name + "/", () => openBrowser(e.path)));
     else if (e.openable) list.appendChild(browseRow(e.name, () => openFile(e.path)));
     else list.appendChild(browseRow(e.name, null)); // unsupported format
   }
-  if (list.children.length === 0) {
+  if (shown === 0) {
     const empty = document.createElement("div");
     empty.className = "muted";
     empty.style.padding = "6px";
-    empty.textContent = "empty folder";
+    empty.textContent = filter ? "no match" : "empty folder";
     list.appendChild(empty);
   }
-  const w = el("win-open");
-  w.style.display = "flex";
-  w.style.zIndex = ++topZ;
+}
+
+const joinPath = (base, name) => (base.endsWith("/") ? base + name : base + "/" + name);
+
+// Tab-completion of the typed path, shell-style: complete a lone match fully
+// (drilling into a folder), or to the longest common prefix when several match.
+async function completePath() {
+  const input = el("open-input");
+  const val = input.value;
+  const slash = val.lastIndexOf("/");
+  const dirPart = slash < 0 ? openDir : slash === 0 ? "/" : val.slice(0, slash);
+  const partial = val.slice(slash + 1);
+  let data;
+  try {
+    data = await api.browse(dirPart);
+  } catch {
+    return;
+  }
+  const matches = data.entries.filter((e) => e.name.startsWith(partial));
+  if (matches.length === 0) return renderEntries(data, partial); // shows "no match"
+  if (matches.length === 1) {
+    const m = matches[0];
+    if (m.is_dir) {
+      const sub = await api.browse(m.path);
+      openDir = sub.path;
+      input.value = sub.path.endsWith("/") ? sub.path : sub.path + "/";
+      renderEntries(sub, "");
+    } else {
+      input.value = joinPath(data.path, m.name);
+      renderEntries(data, m.name);
+    }
+    return;
+  }
+  let lcp = matches[0].name;
+  for (const m of matches) while (!m.name.startsWith(lcp)) lcp = lcp.slice(0, -1);
+  input.value = joinPath(data.path, lcp);
+  renderEntries(data, lcp);
+}
+
+// Enter on the path field: open it as a file if it ends with a loadable
+// extension, otherwise browse into it as a folder.
+function submitPath() {
+  const val = el("open-input").value.trim();
+  if (!val) return;
+  const lower = val.toLowerCase();
+  if (openExts.some((x) => lower.endsWith(x))) openFile(val);
+  else openBrowser(val);
 }
 
 function browseRow(label, onClick) {
@@ -479,6 +537,17 @@ function wire() {
   el("seg-name").onchange = () => renderSegParams(el("seg-name").value);
   el("seg-run").onclick = runSegmenter;
   el("open-file").onclick = () => openBrowser(openDir);
+  el("open-input").addEventListener("keydown", (e) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      completePath();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      submitPath();
+    } else if (e.key === "Escape") {
+      el("win-open").style.display = "none";
+    }
+  });
   el("grp-showall").onclick = () => api.groupsShowAll().then(applyState);
   el("grp-hideall").onclick = () => api.groupsHideAll().then(applyState);
   // Assign the active class to every checked (visible) segment at once.

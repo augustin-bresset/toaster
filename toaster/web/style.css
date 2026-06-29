@@ -25,6 +25,34 @@ body {
 }
 .logo { display: inline-flex; align-items: center; gap: 8px; color: var(--fg); }
 .logo b { letter-spacing: 4px; font-weight: 800; font-size: 15px; }
+
+/* Per-theme logo: each theme shows its own animated mark. */
+.logo-art { display: none; align-items: center; line-height: 0; }
+body[data-theme="toaster"] .logo-art[data-logo="toaster"],
+body[data-theme="cafe"] .logo-art[data-logo="cafe"],
+body[data-theme="arcade"] .logo-art[data-logo="arcade"] { display: inline-flex; }
+.logo-art svg { overflow: visible; }
+.logo-art g { transform-box: fill-box; transform-origin: center; }
+
+/* Toaster — the toast bobs as if about to pop. */
+.logo-art[data-logo="toaster"] .toast { animation: toastbob 2.4s ease-in-out infinite; }
+@keyframes toastbob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+
+/* Café — steam rises and shimmers above the cup. */
+.logo-art[data-logo="cafe"] .steam { transform-origin: center bottom; animation: steamrise 2.2s ease-in-out infinite; }
+@keyframes steamrise {
+  0% { opacity: 0.2; transform: translateY(2px) scaleY(0.9); }
+  50% { opacity: 0.95; transform: translateY(-2px) scaleY(1.05); }
+  100% { opacity: 0.2; transform: translateY(-5px) scaleY(0.9); }
+}
+
+/* Arcade — the invader hops in two stepped frames, like the originals. */
+.logo-art[data-logo="arcade"] .invader { animation: invhop 0.7s steps(2, jump-none) infinite; }
+@keyframes invhop { 0% { transform: translateY(0); } 100% { transform: translateY(-3px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-art .toast, .logo-art .steam, .logo-art .invader { animation: none; }
+}
 .sep { width: 2px; height: 18px; background: var(--line); margin: 0 4px; }
 .spacer { flex: 1; }
 #status { color: var(--muted); font: 11px/1 ui-monospace, monospace; letter-spacing: 0.5px; }

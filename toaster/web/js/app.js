@@ -13,6 +13,12 @@ let state = null; // decoded { snapshot, labels, grouping, selection }
 let pickMode = "point";
 let currentGroup = null;
 let focusGroup = null; // a group to scroll/flash in the Segments window after a re-render
+let boxRect = null; // the drawn box (client coords) kept on screen so a double-click inside it labels
+const inRect = (e, r) => e.clientX >= r.l && e.clientX <= r.r && e.clientY >= r.t && e.clientY <= r.b;
+function clearBox() {
+  boxRect = null;
+  el("rubber").style.display = "none";
+}
 let topZ = 10;
 let segSpecs = {}; // segmenter name -> [{name, type, default, min, max, step}]
 let voxel = { size: 0.5, showEmpty: false, map: null, centers: new Float32Array(0) };
@@ -528,6 +534,7 @@ async function act(name) {
 
 // Clear the current selection (no-op / no round-trip if nothing is selected).
 function clearSelectionIfAny() {
+  clearBox(); // a drawn box is part of the selection's visual — drop it too
   if (state && state.selection.length > 0) api.clearSelection().then(applyState);
 }
 
@@ -597,6 +604,7 @@ function setPickMode(mode) {
     b.classList.toggle("active", b.dataset.modePick === mode);
   });
   viewer.setBoxMode(mode === "box"); // box mode keeps camera on right-drag / wheel
+  clearBox(); // a box from a previous session in box mode shouldn't linger
   if (mode === "voxel") enterVoxelMode();
   else exitVoxelMode();
 }
@@ -609,32 +617,46 @@ function setupPointer() {
   dom.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     down = { x: e.clientX, y: e.clientY, moved: false };
-    if (pickMode === "box") {
-      rubber.style.display = "block";
-      updateRubber(rubber, down, down);
-    }
   });
 
   dom.addEventListener("pointermove", (e) => {
     if (!down) return;
     if (Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y) > 4) down.moved = true;
-    if (pickMode === "box") updateRubber(rubber, down, { x: e.clientX, y: e.clientY });
+    // Draw the rubber band only once it's an actual drag, so a plain click in
+    // box mode leaves the previously-drawn box on screen.
+    if (pickMode === "box" && down.moved) {
+      rubber.style.display = "block";
+      updateRubber(rubber, down, { x: e.clientX, y: e.clientY });
+    }
   });
 
   window.addEventListener("pointerup", (e) => {
     if (!down || !state) return;
     const start = down;
     down = null;
-    rubber.style.display = "none";
     const mods = modifiers(e);
 
-    // Box drag -> frustum select.
-    if (pickMode === "box" && start.moved) {
-      const r = dom.getBoundingClientRect();
-      const idx = viewer.pickBox(start.x - r.left, start.y - r.top, e.clientX - r.left, e.clientY - r.top);
-      if (idx.length) api.box(idx, mods).then(applyState);
+    if (pickMode === "box") {
+      if (start.moved) {
+        // Box drag -> frustum select, and KEEP the box drawn so you can
+        // double-click inside it to label the whole selection.
+        const r = dom.getBoundingClientRect();
+        const idx = viewer.pickBox(start.x - r.left, start.y - r.top, e.clientX - r.left, e.clientY - r.top);
+        if (idx.length) {
+          boxRect = { l: Math.min(start.x, e.clientX), t: Math.min(start.y, e.clientY),
+                      r: Math.max(start.x, e.clientX), b: Math.max(start.y, e.clientY) };  // fmt: skip
+          api.box(idx, mods).then(applyState);
+        } else {
+          clearBox(); // an empty drag draws no box
+        }
+        return;
+      }
+      // A plain click inside the box is the first half of a double-click to
+      // label — keep everything. A click elsewhere dismisses the box.
+      if (!(boxRect && inRect(e, boxRect)) && mods.length === 0) clearSelectionIfAny();
       return;
     }
+
     if (start.moved) return; // a drag = orbit, never a selection
 
     // A click: hit a point, or — on empty space with no modifier — deselect.
@@ -678,6 +700,14 @@ function setupPointer() {
 
 async function labelUnderCursor(e) {
   if (!state) return;
+  // Box mode: a double-click inside the drawn box labels the whole box selection.
+  if (pickMode === "box") {
+    if (boxRect && inRect(e, boxRect) && state.selection.length) {
+      await act("assign");
+      clearBox();
+    }
+    return;
+  }
   const i = viewer.pick(e.clientX, e.clientY);
   if (i < 0) return;
   applyState(pickMode === "voxel" ? await api.box(voxelIndicesOf(i), []) : await api.pick(i, []));

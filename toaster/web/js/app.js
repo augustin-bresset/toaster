@@ -184,11 +184,11 @@ async function openBrowser(path) {
   el("open-path").textContent = data.path;
   const list = el("open-list");
   list.innerHTML = "";
-  if (data.parent) list.appendChild(browseRow("📁  ..", () => openBrowser(data.parent)));
+  if (data.parent) list.appendChild(browseRow("..", () => openBrowser(data.parent)));
   for (const e of data.entries) {
-    if (e.is_dir) list.appendChild(browseRow("📁  " + e.name, () => openBrowser(e.path)));
-    else if (e.openable) list.appendChild(browseRow("📄  " + e.name, () => openFile(e.path)));
-    else list.appendChild(browseRow("•  " + e.name, null)); // unsupported format
+    if (e.is_dir) list.appendChild(browseRow(e.name + "/", () => openBrowser(e.path)));
+    else if (e.openable) list.appendChild(browseRow(e.name, () => openFile(e.path)));
+    else list.appendChild(browseRow(e.name, null)); // unsupported format
   }
   if (list.children.length === 0) {
     const empty = document.createElement("div");

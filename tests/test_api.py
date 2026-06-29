@@ -74,8 +74,19 @@ def test_group_visibility_in_state(client):
     hidden = client.post("/api/group/visibility", json={"group_id": gid, "visible": False}).json()
     seg = next(s for s in hidden["snapshot"]["segments"] if s["id"] == gid)
     assert seg["visible"] is False
+    allhidden = client.post("/api/groups/hide_all").json()
+    assert all(s["visible"] is False for s in allhidden["snapshot"]["segments"])
     shown = client.post("/api/groups/show_all").json()
     assert all(s["visible"] for s in shown["snapshot"]["segments"])
+
+
+def test_clear_grouping_endpoint(client):
+    state = client.post("/api/segment", json={"name": "dbscan", "params": {"eps": 0.5}}).json()
+    assert state["grouping"] is not None
+    cleared = client.post("/api/grouping/clear").json()
+    assert cleared["grouping"] is None
+    assert cleared["snapshot"]["active_grouping"] is None
+    assert cleared["snapshot"]["display_mode"] == "labels"
 
 
 def test_class_editing_endpoints(client):

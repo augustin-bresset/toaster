@@ -79,6 +79,13 @@ class Session:
             raise IndexError(f"no grouping at index {index}")
         self.active_grouping_index = index
 
+    def remove_active_grouping(self) -> None:
+        """Discard the active grouping entirely; no grouping stays active."""
+        if self.active_grouping_index is None:
+            return
+        self.groupings.pop(self.active_grouping_index)
+        self.active_grouping_index = None
+
     def clear_selection(self) -> None:
         """Reset the selection to empty."""
         self.selection = Selection.empty(self.cloud.n)

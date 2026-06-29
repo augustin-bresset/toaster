@@ -130,7 +130,8 @@ class CSFGroundSegmenter:
         csf.params.class_threshold = self.threshold
         csf.setPointCloud(np.asarray(xyz, np.float64))
         ground_idx, non_ground_idx = CSF.VecInt(), CSF.VecInt()
-        csf.do_filtering(ground_idx, non_ground_idx)
+        # exportCloth defaults to True and dumps a 'cloth_nodes.txt' in the cwd.
+        csf.do_filtering(ground_idx, non_ground_idx, False)
         ground = np.zeros(len(xyz), dtype=bool)
         ground[np.asarray(ground_idx, dtype=np.int64)] = True
         return _ground_grouping(

@@ -165,10 +165,34 @@ def test_group_visibility_commands(two_clusters, schema):
     ctl.solo_group(1)
     assert viewer.visible_mask[:50].sum() == 0 and viewer.visible_mask[50:].all()
 
+    # Hide all -> every group masked off.
+    ctl.hide_all_groups()
+    assert viewer.visible_mask is not None and viewer.visible_mask.sum() == 0
+    assert all(s.visible is False for s in ctl.snapshot().segments)
+
     # Show all -> mask cleared.
     ctl.show_all_groups()
     assert viewer.visible_mask is None
     assert all(s.visible for s in ctl.snapshot().segments)
+
+
+def test_clear_grouping_discards_segmentation_keeps_labels(two_clusters, schema):
+    session = _grouped_session(two_clusters, schema)
+    ctl = InteractionController(session, FakeViewer())
+    ctl.set_display_mode("grouping")
+    # Label a segment first — its labels must survive the grouping being dropped.
+    labelled = ctl.assign_group(0, 1)
+    assert labelled == 50
+
+    ctl.clear_grouping()
+    assert session.active_grouping is None
+    assert session.groupings == []
+    assert ctl.display_mode == "labels"
+    assert (session.cloud.labels[:50] == 1).all()  # labels kept
+    assert ctl.snapshot().segments == []
+    # Clearing again is a harmless no-op.
+    ctl.clear_grouping()
+    assert session.active_grouping is None
 
 
 def test_class_editing(two_clusters, schema):

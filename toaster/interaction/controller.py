@@ -242,6 +242,28 @@ class InteractionController:
         self._apply_visibility()
         self._changed()
 
+    def hide_all_groups(self) -> None:
+        """Hide every segment of the active grouping."""
+        grouping = self.session.active_grouping
+        if grouping is None:
+            return
+        self._hidden_groups = {int(g) for g in grouping.group_ids()}
+        self._apply_visibility()
+        self._changed()
+
+    def clear_grouping(self) -> None:
+        """Discard the active grouping and return to the labels view.
+
+        Closing the Segments window throws the (transient) segmentation away —
+        the labels it helped produce stay; only the grouping overlay is gone.
+        """
+        if self.session.active_grouping is None:
+            return
+        self.session.remove_active_grouping()
+        self._hidden_groups.clear()
+        self.set_display_mode("labels")
+        self._changed()
+
     def reset_visibility(self) -> None:
         """Drop all hidden state (e.g. when the active grouping changes)."""
         self._hidden_groups.clear()

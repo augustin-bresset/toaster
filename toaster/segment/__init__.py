@@ -14,6 +14,7 @@ Then construct it by name: ``get_segmenter("mine", **params)``.
 
 from __future__ import annotations
 
+import importlib.util
 from collections.abc import Callable, Sequence
 from dataclasses import asdict
 
@@ -137,6 +138,10 @@ for _seg in (
     MeanShiftSegmenter,
     RANSACGroundSegmenter,
     GroundGridSegmenter,
-    CSFGroundSegmenter,
 ):
     register_segmenter(_seg)
+
+# CSF needs the optional 'cloth-simulation-filter' package — only offer it when
+# it is actually installed, so it never shows up as a broken option.
+if importlib.util.find_spec("CSF") is not None:
+    register_segmenter(CSFGroundSegmenter)

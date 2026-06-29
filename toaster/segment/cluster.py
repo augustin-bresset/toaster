@@ -21,11 +21,26 @@ __all__ = [
 ]
 
 
-def _too_big(n: int, limit: int, name: str) -> None:
-    if n > limit:
-        raise ValueError(
-            f"{name} is too slow above {limit:,} points (got {n:,}); run it on a selection instead."
-        )
+def _assign_subsampled(xyz, labeler, max_points, seed=0):
+    """Run a quadratic clusterer on a random subsample, then assign every point.
+
+    Keeps O(n^2) methods usable on large clouds: cluster a subsample, take each
+    cluster's centroid, and label every point by its nearest centroid.
+    """
+    n = len(xyz)
+    if n <= max_points:
+        return labeler(xyz)
+    from scipy.spatial.distance import cdist
+
+    rng = np.random.default_rng(seed)
+    sub = rng.choice(n, max_points, replace=False)
+    sub_labels = np.asarray(labeler(xyz[sub]))
+    present = np.unique(sub_labels[sub_labels >= 0])
+    if present.size == 0:
+        return np.full(n, -1, dtype=np.int32)
+    centers = np.array([xyz[sub][sub_labels == u].mean(axis=0) for u in present])
+    nearest = cdist(xyz, centers).argmin(axis=1)
+    return present[nearest].astype(np.int32)
 
 
 class KMeansSegmenter:
@@ -60,10 +75,13 @@ class KMedoidsSegmenter:
 
     def segment(self, cloud: PointCloud, selection: Selection | None = None) -> Grouping:
         xyz, indices = resolve_points(cloud, selection)
-        _too_big(len(xyz), self.MAX_POINTS, "k-medoids")
         if len(xyz) < self.n_clusters:
             return all_noise(indices, cloud.n, source=self.name)
-        labels = _kmedoids(np.asarray(xyz, dtype=np.float64), self.n_clusters)
+        labels = _assign_subsampled(
+            np.asarray(xyz, dtype=np.float64),
+            lambda x: _kmedoids(x, self.n_clusters),
+            self.MAX_POINTS,
+        )
         return scatter(labels, indices, cloud.n, source=self.name,
                        params={"n_clusters": self.n_clusters})  # fmt: skip
 
@@ -82,10 +100,13 @@ class AgglomerativeSegmenter:
         from sklearn.cluster import AgglomerativeClustering
 
         xyz, indices = resolve_points(cloud, selection)
-        _too_big(len(xyz), self.MAX_POINTS, "agglomerative clustering")
         if len(xyz) < self.n_clusters:
             return all_noise(indices, cloud.n, source=self.name)
-        labels = AgglomerativeClustering(n_clusters=self.n_clusters).fit_predict(xyz)
+        labels = _assign_subsampled(
+            np.asarray(xyz, dtype=np.float32),
+            lambda x: AgglomerativeClustering(n_clusters=self.n_clusters).fit_predict(x),
+            self.MAX_POINTS,
+        )
         return scatter(labels, indices, cloud.n, source=self.name,
                        params={"n_clusters": self.n_clusters})  # fmt: skip
 
@@ -124,11 +145,14 @@ class MeanShiftSegmenter:
         from sklearn.cluster import MeanShift
 
         xyz, indices = resolve_points(cloud, selection)
-        _too_big(len(xyz), self.MAX_POINTS, "mean-shift")
         if len(xyz) < 2:
             return all_noise(indices, cloud.n, source=self.name)
         bw = self.bandwidth if self.bandwidth > 0 else None
-        labels = MeanShift(bandwidth=bw, bin_seeding=True).fit_predict(xyz)
+        labels = _assign_subsampled(
+            np.asarray(xyz, dtype=np.float32),
+            lambda x: MeanShift(bandwidth=bw, bin_seeding=True).fit_predict(x),
+            self.MAX_POINTS,
+        )
         return scatter(labels, indices, cloud.n, source=self.name,
                        params={"bandwidth": self.bandwidth})  # fmt: skip
 

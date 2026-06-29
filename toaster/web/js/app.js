@@ -275,6 +275,11 @@ function renderGroups() {
   el("groups-header").textContent = state.snapshot.active_grouping
     ? `${state.snapshot.active_grouping.n_groups} segments · ${state.snapshot.active_grouping.source}`
     : "Segments — run a segmenter";
+  // "Suggest" only makes sense when the grouping carries model predictions
+  // (ground detectors, model segmenters); plain clusterers have none.
+  const hasSug = !!state.snapshot.has_suggestions;
+  el("grp-suggested").disabled = !hasSug;
+  el("grp-suggest-all").disabled = !hasSug;
   for (const seg of segs) {
     const row = document.createElement("div");
     row.className = "item" + (seg.id === currentGroup ? " active" : "");
@@ -417,9 +422,16 @@ function wire() {
   el("seg-run").onclick = runSegmenter;
   el("grp-solo").onclick = () => withGroup((g) => api.groupSolo(g).then(applyState));
   el("grp-showall").onclick = () => api.groupsShowAll().then(applyState);
+  el("grp-hideall").onclick = () => api.groupsHideAll().then(applyState);
   el("grp-assign").onclick = () => withGroup((g) => api.groupAssign(g).then(applyState));
   el("grp-suggested").onclick = () => withGroup((g) => api.groupSuggested(g).then(applyState));
   el("grp-suggest-all").onclick = () => api.groupSuggested(null).then(applyState);
+  // Closing the Segments window discards the (transient) segmentation entirely.
+  el("grp-close").onclick = () => {
+    currentGroup = null;
+    el("win-groups").style.display = "none";
+    api.clearGrouping().then(applyState);
+  };
 
   el("vox-size").onchange = (e) => {
     voxel.size = Math.max(0.05, +e.target.value || 0.5);

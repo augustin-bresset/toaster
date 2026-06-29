@@ -157,6 +157,14 @@ class AnnotationService:
         self._ctl().show_all_groups()
         return self.state()
 
+    def hide_all_groups(self) -> dict[str, Any]:
+        self._ctl().hide_all_groups()
+        return self.state()
+
+    def clear_grouping(self) -> dict[str, Any]:
+        self._ctl().clear_grouping()
+        return self.state()
+
     def add_class(self, name: str, color=None) -> dict[str, Any]:
         self._ctl().add_class(name, color)
         return self.state()

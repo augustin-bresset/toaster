@@ -193,6 +193,14 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     def groups_show_all():
         return service.show_all_groups()
 
+    @app.post("/api/groups/hide_all")
+    def groups_hide_all():
+        return service.hide_all_groups()
+
+    @app.post("/api/grouping/clear")
+    def grouping_clear():
+        return service.clear_grouping()
+
     # -- class (schema) editing --
     @app.post("/api/class/add")
     def class_add(body: AddClassBody):

@@ -120,19 +120,26 @@
       <div class="window" id="win-groups" style="right: 14px; top: 52px; width: 256px; display: none">
         <div class="titlebar">
           <span id="groups-header">Segments</span>
-          <button class="x" data-close="win-groups">×</button>
+          <button class="x" id="grp-close" title="Discard this segmentation">×</button>
         </div>
         <div class="body grow">
           <div id="groups" class="list grow"></div>
           <div class="row">
-            <button id="grp-solo">Solo</button>
-            <button id="grp-showall">Show all</button>
+            <button id="grp-solo" title="Show only the selected segment">Solo</button>
+            <button id="grp-showall" title="Show every segment">Show all</button>
+            <button id="grp-hideall" title="Hide every segment">Hide all</button>
           </div>
           <div class="row">
-            <button id="grp-assign">Assign class</button>
-            <button id="grp-suggested">Suggest</button>
+            <button id="grp-assign" title="Label the selected segment with the active class">
+              Assign class
+            </button>
+            <button id="grp-suggested" title="Label the selected segment with the model's suggested class">
+              Suggest
+            </button>
           </div>
-          <button id="grp-suggest-all">Assign all suggested</button>
+          <button id="grp-suggest-all" title="Apply every segment's suggested class at once">
+            Assign all suggested
+          </button>
         </div>
       </div>
 

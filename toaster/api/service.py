@@ -88,7 +88,8 @@ class AnnotationService:
             "snapshot": asdict(ctl.snapshot()),
             "labels": encode_array(ctl.label_array()),
             "grouping": encode_array(grouping) if grouping is not None else None,
-            "selection": encode_array(ctl.selection_indices()),
+            # int32 so it maps to a JS Int32Array (int64 has no plain TypedArray).
+            "selection": encode_array(ctl.selection_indices().astype(np.int32)),
         }
 
     # -- commands ---------------------------------------------------------

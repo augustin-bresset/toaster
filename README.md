@@ -1,8 +1,20 @@
+<div align="center">
+
+<img src="toaster/web/icon.svg" alt="Toaster logo" width="120" />
+
 # Toaster
+
+**Annotate lidar point clouds in 3D — run a model, click one cluster, label the whole group at once.**
 
 [![CI](https://github.com/augustin-bresset/toaster/actions/workflows/ci.yml/badge.svg)](https://github.com/augustin-bresset/toaster/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Live demo](https://img.shields.io/badge/demo-%F0%9F%A4%97%20Hugging%20Face-ffcc00)](https://huggingface.co/spaces/SmaugC137/toaster)
+
+[**▶ Live demo**](https://huggingface.co/spaces/SmaugC137/toaster) · [**Sibling tool: Splasher**](https://github.com/augustin-bresset/splasher) · [Quick start](#install)
+
+</div>
 
 Annotate lidar **point clouds** in 3D — walk through them, select points one by
 one or by zone, assign semantic classes — and, its headline feature, **plug in
@@ -34,6 +46,9 @@ Optional extras: `csf` (CSF ground detection), `hdbscan`, `open3d` (robust
 (legacy PyVista backend).
 
 ## Run the app
+
+> **Try it online first** — a live demo runs on
+> [🤗 Hugging Face Spaces](https://huggingface.co/spaces/SmaugC137/toaster), no install required.
 
 `toaster` opens a **native desktop window** (the web UI in a pywebview shell);
 `toaster-web` serves the **same UI for a plain browser**.
@@ -183,6 +198,17 @@ only on `core`; `interaction` glues `core` to a `Viewer` protocol but stays
 headless (the web build drives it through a `NullViewer`); `api` + `web` are the
 front-end. The browser only ever receives numpy arrays and a flat snapshot —
 never colour buffers — so the renderer is fully client-side and replaceable.
+
+## Sibling project — Splasher
+
+**[Splasher](https://github.com/augustin-bresset/splasher)** is Toaster's sibling,
+built on the same foundation (a numpy-only core with a shared web + native-desktop
+front). Where Toaster does **3D semantic segmentation** of a single cloud, Splasher
+labels **synchronized multi-channel datasets** (lidar + camera + pose) into a
+top-down **BEV grid** or per-point labels — aimed at robotics / traversability.
+
+Same house, different task: reach for **Toaster** to segment and label points in 3D,
+for **Splasher** when you have synchronized sensors and want a bird's-eye labeling grid.
 
 ## Development
 

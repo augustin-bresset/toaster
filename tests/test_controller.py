@@ -161,10 +161,6 @@ def test_group_visibility_commands(two_clusters, schema):
     assert viewer.visible_mask[50:].all()
     assert next(s for s in ctl.snapshot().segments if s.id == 0).visible is False
 
-    # Solo group 1 -> only group 1 visible.
-    ctl.solo_group(1)
-    assert viewer.visible_mask[:50].sum() == 0 and viewer.visible_mask[50:].all()
-
     # Hide all -> every group masked off.
     ctl.hide_all_groups()
     assert viewer.visible_mask is not None and viewer.visible_mask.sum() == 0
@@ -174,6 +170,24 @@ def test_group_visibility_commands(two_clusters, schema):
     ctl.show_all_groups()
     assert viewer.visible_mask is None
     assert all(s.visible for s in ctl.snapshot().segments)
+
+
+def test_assign_visible_groups_labels_only_checked(two_clusters, schema):
+    session = _grouped_session(two_clusters, schema)  # group 0 = first 50, group 1 = last 50
+    ctl = InteractionController(session, FakeViewer())
+
+    # Uncheck (hide) group 0, then assign -> only the visible group 1 is labelled.
+    ctl.set_group_visibility(0, False)
+    ctl.set_active_class(2)
+    n = ctl.assign_visible_groups()
+    labels = session.cloud.labels
+    assert n == 50
+    assert (labels[:50] == schema.unlabeled_id).all()  # hidden group untouched
+    assert (labels[50:] == 2).all()  # checked group labelled
+
+    # It is a single undoable batch.
+    ctl.undo()
+    assert (session.cloud.labels == schema.unlabeled_id).all()
 
 
 def test_clear_grouping_discards_segmentation_keeps_labels(two_clusters, schema):

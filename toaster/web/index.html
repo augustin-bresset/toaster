@@ -164,11 +164,13 @@
         <div class="body grow">
           <div id="groups" class="list grow"></div>
           <div class="row">
-            <button id="grp-solo" title="Keep only the selected segment in colour, grey out the rest">Solo</button>
             <button id="grp-showall" title="Colour every segment">Show all</button>
             <button id="grp-hideall" title="Grey out every segment">Hide all</button>
           </div>
-          <div class="muted" style="padding: 4px 2px">Double-click a segment to label it with the active class.</div>
+          <button id="grp-assign" class="primary" title="Label every checked (visible) segment with the active class">
+            Assign checked
+          </button>
+          <div class="muted" style="padding: 4px 2px">Check the segments you want, then Assign — or double-click one to label it.</div>
         </div>
       </div>
 

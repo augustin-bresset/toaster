@@ -185,6 +185,26 @@ class InteractionController:
         self._changed()
         return int(touched.size)
 
+    def assign_visible_groups(self, class_id: int | None = None) -> int:
+        """Label every currently-visible (checked) segment with the active/given class.
+
+        Hidden (unchecked, greyed) segments are skipped. The whole batch is one
+        undoable edit. Returns the number of points labelled.
+        """
+        grouping = self.session.active_grouping
+        if grouping is None:
+            return 0
+        cid = self.session.active_class if class_id is None else class_id
+        sel = Selection.empty(self.session.cloud.n)
+        for g in grouping.group_ids():
+            if int(g) not in self._hidden_groups:
+                sel = sel | Selection.from_group(grouping, int(g))
+        touched = self.session.annotation.assign(sel, cid)
+        if touched.size:
+            self._paint_labels(touched)
+        self._changed()
+        return int(touched.size)
+
     def apply_suggested(self, group_id: int | None = None) -> int:
         """Accept model predictions: label group(s) with their ``suggested_labels``.
 
@@ -224,15 +244,6 @@ class InteractionController:
             self._hidden_groups.discard(group_id)
         else:
             self._hidden_groups.add(group_id)
-        self._apply_visibility()
-        self._changed()
-
-    def solo_group(self, group_id: int) -> None:
-        """Show only ``group_id``, hiding every other segment."""
-        grouping = self.session.active_grouping
-        if grouping is None:
-            return
-        self._hidden_groups = {int(g) for g in grouping.group_ids() if int(g) != group_id}
         self._apply_visibility()
         self._changed()
 

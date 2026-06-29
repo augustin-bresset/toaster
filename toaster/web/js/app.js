@@ -326,10 +326,6 @@ function renderGroups() {
   }
 }
 
-const withGroup = (fn) => {
-  if (currentGroup != null) fn(currentGroup);
-};
-
 // -- voxel selection mode ---------------------------------------------------
 
 function buildVoxels() {
@@ -420,9 +416,14 @@ function wire() {
   el("round").onchange = (e) => viewer.setRound(e.target.checked);
   el("seg-name").onchange = () => renderSegParams(el("seg-name").value);
   el("seg-run").onclick = runSegmenter;
-  el("grp-solo").onclick = () => withGroup((g) => api.groupSolo(g).then(applyState));
   el("grp-showall").onclick = () => api.groupsShowAll().then(applyState);
   el("grp-hideall").onclick = () => api.groupsHideAll().then(applyState);
+  // Assign the active class to every checked (visible) segment at once.
+  el("grp-assign").onclick = () =>
+    api.groupsAssignVisible().then((s) => {
+      applyState(s);
+      buzz("flicker");
+    });
   // Closing the Segments window discards the (transient) segmentation entirely.
   el("grp-close").onclick = () => {
     currentGroup = null;

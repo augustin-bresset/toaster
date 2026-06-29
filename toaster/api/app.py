@@ -72,10 +72,6 @@ class VisibilityBody(BaseModel):
     visible: bool
 
 
-class SoloBody(BaseModel):
-    group_id: int
-
-
 class AddClassBody(BaseModel):
     name: str
     color: list[int] | str | None = None
@@ -185,9 +181,9 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     def group_visibility(body: VisibilityBody):
         return service.set_group_visibility(body.group_id, body.visible)
 
-    @app.post("/api/group/solo")
-    def group_solo(body: SoloBody):
-        return service.solo_group(body.group_id)
+    @app.post("/api/groups/assign_visible")
+    def groups_assign_visible(body: AssignBody):
+        return service.assign_visible_groups(body.class_id)
 
     @app.post("/api/groups/show_all")
     def groups_show_all():

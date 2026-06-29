@@ -58,7 +58,7 @@ export const api = {
   groupSuggested: (group_id = null) => jpost("/api/group/suggested", { group_id }),
   groupVisibility: (group_id, visible) =>
     jpost("/api/group/visibility", { group_id, visible }),
-  groupSolo: (group_id) => jpost("/api/group/solo", { group_id }),
+  groupsAssignVisible: (class_id = null) => jpost("/api/groups/assign_visible", { class_id }),
   groupsShowAll: () => jpost("/api/groups/show_all"),
   groupsHideAll: () => jpost("/api/groups/hide_all"),
   clearGrouping: () => jpost("/api/grouping/clear"),

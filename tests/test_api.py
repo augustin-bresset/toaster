@@ -80,6 +80,19 @@ def test_group_visibility_in_state(client):
     assert all(s["visible"] for s in shown["snapshot"]["segments"])
 
 
+def test_assign_visible_groups_endpoint(client):
+    state = client.post("/api/segment", json={"name": "dbscan", "params": {"eps": 0.5}}).json()
+    segs = state["snapshot"]["segments"]
+    assert len(segs) == 2
+    hide = segs[0]
+    # Uncheck one segment, then assign class 3 to the visible (checked) ones.
+    client.post("/api/group/visibility", json={"group_id": hide["id"], "visible": False})
+    after = client.post("/api/groups/assign_visible", json={"class_id": 3}).json()
+    labels = decode_array(after["labels"])
+    # Exactly the visible segment's points became class 3; the hidden one did not.
+    assert int((labels == 3).sum()) == sum(s["count"] for s in segs if s["id"] != hide["id"])
+
+
 def test_clear_grouping_endpoint(client):
     state = client.post("/api/segment", json={"name": "dbscan", "params": {"eps": 0.5}}).json()
     assert state["grouping"] is not None

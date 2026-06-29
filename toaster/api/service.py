@@ -145,12 +145,12 @@ class AnnotationService:
         self._ctl().apply_suggested(group_id)
         return self.state()
 
-    def set_group_visibility(self, group_id: int, visible: bool) -> dict[str, Any]:
-        self._ctl().set_group_visibility(group_id, visible)
+    def assign_visible_groups(self, class_id: int | None = None) -> dict[str, Any]:
+        self._ctl().assign_visible_groups(class_id)
         return self.state()
 
-    def solo_group(self, group_id: int) -> dict[str, Any]:
-        self._ctl().solo_group(group_id)
+    def set_group_visibility(self, group_id: int, visible: bool) -> dict[str, Any]:
+        self._ctl().set_group_visibility(group_id, visible)
         return self.state()
 
     def show_all_groups(self) -> dict[str, Any]:

@@ -167,6 +167,20 @@ function renderClasses() {
   for (const c of state.snapshot.classes) {
     const row = document.createElement("div");
     row.className = "item" + (c.id === state.snapshot.active_class ? " active" : "");
+    row.innerHTML = `<span class="swatch" style="background:${rgb(c.color)}"></span>${c.id}  ${c.name}`;
+    row.onclick = () => api.activeClass(c.id).then(applyState);
+    box.appendChild(row);
+  }
+  renderClassManager();
+}
+
+// The "Manage classes" window: an editable colour per row (+ add/rename/remove).
+function renderClassManager() {
+  const box = el("class-manager");
+  box.innerHTML = "";
+  for (const c of state.snapshot.classes) {
+    const row = document.createElement("div");
+    row.className = "item" + (c.id === state.snapshot.active_class ? " active" : "");
     const color = document.createElement("input");
     color.type = "color";
     color.className = "swatch-input";
@@ -388,6 +402,13 @@ function wire() {
   });
   document.querySelectorAll("[data-close]").forEach((b) => {
     b.onclick = () => (el(b.dataset.close).style.display = "none");
+  });
+  document.querySelectorAll("[data-open]").forEach((b) => {
+    b.onclick = () => {
+      const w = el(b.dataset.open);
+      w.style.display = "flex";
+      w.style.zIndex = ++topZ;
+    };
   });
   setupWindows();
   setupPointer();

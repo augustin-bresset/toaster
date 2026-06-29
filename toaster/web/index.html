@@ -48,14 +48,14 @@
       <button data-mode-pick="box" class="toggle">Box</button>
       <button data-mode-pick="voxel" class="toggle">Voxel</button>
       <span class="spacer"></span>
+      <span id="status">loading…</span>
+      <span class="sep"></span>
       <select id="theme" title="Theme">
         <option value="toaster">Toaster</option>
         <option value="breakfast">Pixel Breakfast</option>
         <option value="diner">Diner</option>
         <option value="arcade">Arcade</option>
       </select>
-      <span class="sep"></span>
-      <span id="status">loading…</span>
     </header>
     <div id="loading"><div class="bar"></div></div>
 
@@ -63,14 +63,25 @@
       <div id="viewport"></div>
 
       <div class="window" id="win-classes" style="left: 14px; top: 52px; width: 248px">
-        <div class="titlebar">Classes</div>
+        <div class="titlebar">
+          Classes
+          <button class="gear" data-open="win-class-manager" title="Manage classes">⚙</button>
+        </div>
+        <div class="body"><div id="classes" class="list"></div></div>
+      </div>
+
+      <div class="window" id="win-class-manager" style="left: 290px; top: 52px; width: 250px; display: none">
+        <div class="titlebar">
+          Manage classes
+          <button class="x" data-close="win-class-manager">×</button>
+        </div>
         <div class="body">
-          <div id="classes" class="list"></div>
+          <div id="class-manager" class="list"></div>
           <div class="row">
-            <button id="cls-add">Add</button>
             <button id="cls-rename">Rename</button>
             <button id="cls-remove">Remove</button>
           </div>
+          <button id="cls-add" class="primary">+ Add class</button>
         </div>
       </div>
 

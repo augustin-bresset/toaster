@@ -20,7 +20,7 @@ const VOXEL_GRID_CAP = 30000; // max cubes to draw / cells to enumerate
 
 // -- themes ------------------------------------------------------------------
 
-const THEME_BG = { toaster: 0x1f2430, breakfast: 0xe3cfa0, diner: 0x15181f, arcade: 0x050507 };
+const THEME_BG = { toaster: 0x1f2430, cafe: 0x181310, arcade: 0x050507 };
 
 function applyTheme(name) {
   if (!THEME_BG[name]) name = "toaster";
@@ -45,16 +45,70 @@ function initTheme() {
   el("theme").onchange = () => applyTheme(el("theme").value);
 }
 
-const isKitchen = () => document.body.dataset.theme === "breakfast";
+const theme = () => document.body.dataset.theme;
 
-// A little toast jumps out when a grouping is produced (Pixel Breakfast).
-function toastPop() {
-  if (!isKitchen()) return;
+// A short-lived element that animates then removes itself.
+function flash(className, text, x, y) {
   const t = document.createElement("div");
-  t.className = "toast-pop";
-  t.textContent = "🍞";
+  t.className = className;
+  t.textContent = text;
+  if (x != null) {
+    t.style.left = x + "px";
+    t.style.top = y + "px";
+  }
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 1000);
+  setTimeout(() => t.remove(), 1200);
+}
+
+// Café Toaster: a toast jumps out when a grouping is produced.
+function toastPop() {
+  if (theme() === "cafe") flash("toast-pop", "🍞");
+}
+
+// Café Toaster: the toaster logo "presses" its lever on Run.
+function logoPress() {
+  if (theme() !== "cafe") return;
+  const logo = document.querySelector(".logo");
+  logo.classList.remove("press");
+  void logo.offsetWidth; // restart the animation
+  logo.classList.add("press");
+}
+
+// Café Toaster: a little "Ding!" on save (+ a soft beep).
+function dingPop() {
+  if (theme() !== "cafe") return;
+  flash("ding-pop", "🔔 Ding!");
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = 880;
+    o.connect(g);
+    g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.12, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    o.start();
+    o.stop(ctx.currentTime + 0.3);
+  } catch {
+    /* audio not allowed */
+  }
+}
+
+// Arcade: score pop on a label, with a combo when you label quickly.
+let _combo = 0;
+let _comboAt = 0;
+function scorePop(points, x, y) {
+  if (theme() !== "arcade") return;
+  const now = performance.now();
+  _combo = now - _comboAt < 2500 ? _combo + 1 : 1;
+  _comboAt = now;
+  const label = `+${points} PTS!` + (_combo > 1 ? `  COMBO x${_combo}` : "");
+  flash("score-pop", label, (x ?? window.innerWidth / 2) + 12, y ?? window.innerHeight / 2);
+}
+
+// Arcade: "LEVEL UP!" when a segmenter produces clusters.
+function levelUp() {
+  if (theme() === "arcade") flash("levelup", "LEVEL UP!");
 }
 
 const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
@@ -456,12 +510,16 @@ function setLoading(on) {
 }
 
 async function act(name) {
-  if (name === "assign") applyState(await api.assign());
-  else if (name === "undo") applyState(await api.undo());
+  if (name === "assign") {
+    const n = state ? state.selection.length : 0;
+    applyState(await api.assign());
+    if (n > 0) scorePop(n * 10); // arcade score (no-op in other themes)
+  } else if (name === "undo") applyState(await api.undo());
   else if (name === "redo") applyState(await api.redo());
   else if (name === "save") {
     const r = await api.save();
     el("status").textContent = "saved " + r.saved.split("/").pop();
+    dingPop(); // café "Ding!"
   }
 }
 
@@ -496,6 +554,7 @@ async function runSegmenter() {
   btn.textContent = "Running…";
   el("status").textContent = `running ${n}…`;
   setLoading(true);
+  logoPress();
   const t0 = performance.now();
   try {
     applyState(await api.segment(n, params, el("seg-scope").checked));
@@ -503,10 +562,17 @@ async function runSegmenter() {
     const dt = ((performance.now() - t0) / 1000).toFixed(1);
     const g = state.snapshot.active_grouping;
     const detail = g ? `${g.source}: ${g.n_groups} segments · ${dt}s` : "done";
-    el("status").textContent = isKitchen() ? `🍞 Perfectly toasted — ${detail}` : `✓ ${detail}`;
+    el("status").textContent =
+      theme() === "cafe"
+        ? `🍞 Perfectly toasted — ${detail}`
+        : theme() === "arcade"
+          ? `LEVEL UP! ${detail}`
+          : `✓ ${detail}`;
     toastPop();
+    levelUp();
   } catch (e) {
-    el("status").textContent = isKitchen() ? `🔥 Burnt! ${e.message}` : "✗ segmentation failed: " + e.message;
+    el("status").textContent =
+      theme() === "cafe" ? `🔥 Burnt! ${e.message}` : "✗ segmentation failed: " + e.message;
   } finally {
     setLoading(false);
     btn.disabled = false;

@@ -16,6 +16,10 @@
 
 </div>
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="Toaster — ground segmentation on a lidar scan, segments ready to label" width="100%" />
+</p>
+
 Annotate lidar **point clouds** in 3D — walk through them, select points one by
 one or by zone, assign semantic classes — and, its headline feature, **plug in
 any model that groups points together** (clustering like DBSCAN, or neural-net

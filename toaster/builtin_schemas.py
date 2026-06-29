@@ -1,7 +1,7 @@
 """Access to the label schemas bundled with the package (front-agnostic).
 
-Lives at the package root (not under ``toaster.app``) so any front-end — the Qt
-app, the web API — can load a default schema without dragging in Qt.
+Lives at the package root so any front-end — the desktop app, the web API — can
+load a default schema without dragging in heavy deps.
 """
 
 from __future__ import annotations

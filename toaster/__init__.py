@@ -1,9 +1,9 @@
 """Toaster — annotate lidar point clouds in 3D with pluggable segmentation models.
 
 Importing :mod:`toaster` pulls in only the headless, numpy-only core (the domain
-types re-exported below). The GUI entry point (:func:`run`) and the rendering
-stack are imported lazily, so ``import toaster`` never drags in Qt/VTK — handy
-for scripts, tests and pipelines.
+types re-exported below). The desktop entry point (:func:`run`) is imported
+lazily, so ``import toaster`` never drags in the web/UI stack — handy for
+scripts, tests and pipelines.
 """
 
 from __future__ import annotations
@@ -38,9 +38,9 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    # PEP 562: defer the Qt/PyVista import until the GUI is actually launched.
+    # PEP 562: defer the web/desktop import until the app is actually launched.
     if name == "run":
-        from .app.run import run
+        from .desktop import main as run
 
         return run
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

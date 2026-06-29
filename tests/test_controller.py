@@ -17,6 +17,7 @@ class FakeViewer:
         self.point_cb = None
         self.box_cb = None
         self.cloud_colors = None
+        self.visible_mask = None
 
     def set_cloud(self, xyz, colors):
         self.cloud_colors = colors
@@ -38,6 +39,9 @@ class FakeViewer:
 
     def set_pick_mode(self, mode):
         self.pick_mode = mode
+
+    def set_visible_mask(self, mask):
+        self.visible_mask = None if mask is None else np.asarray(mask)
 
     def reset_camera(self):
         pass
@@ -143,6 +147,28 @@ def test_group_ops_noop_without_active_grouping(two_clusters, schema):
     ctl = InteractionController(session, FakeViewer())
     assert ctl.assign_group(0) == 0
     assert ctl.apply_suggested() == 0
+
+
+def test_group_visibility_commands(two_clusters, schema):
+    session = _grouped_session(two_clusters, schema)  # group 0 = first 50, group 1 = rest
+    viewer = FakeViewer()
+    ctl = InteractionController(session, viewer)
+
+    # Hide group 0 -> its points masked off, group 1 still visible.
+    ctl.set_group_visibility(0, False)
+    assert viewer.visible_mask is not None
+    assert viewer.visible_mask[:50].sum() == 0
+    assert viewer.visible_mask[50:].all()
+    assert next(s for s in ctl.snapshot().segments if s.id == 0).visible is False
+
+    # Solo group 1 -> only group 1 visible.
+    ctl.solo_group(1)
+    assert viewer.visible_mask[:50].sum() == 0 and viewer.visible_mask[50:].all()
+
+    # Show all -> mask cleared.
+    ctl.show_all_groups()
+    assert viewer.visible_mask is None
+    assert all(s.visible for s in ctl.snapshot().segments)
 
 
 def test_snapshot_is_a_flat_serializable_read_model(two_clusters, schema):

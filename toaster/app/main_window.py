@@ -85,6 +85,9 @@ class MainWindow(QMainWindow):
         self.groups_panel.assign_active_requested.connect(self._on_assign_group_active)
         self.groups_panel.assign_suggested_requested.connect(self._on_assign_group_suggested)
         self.groups_panel.assign_all_suggested_requested.connect(self._on_assign_all_suggested)
+        self.groups_panel.visibility_changed.connect(self._on_group_visibility)
+        self.groups_panel.solo_requested.connect(self._on_solo_group)
+        self.groups_panel.show_all_requested.connect(self._on_show_all_groups)
 
         self._build_menus()
         self._build_toolbar()
@@ -378,6 +381,7 @@ class MainWindow(QMainWindow):
         if self._session is None:
             return
         self._session.set_active_grouping(index)
+        self._controller.reset_visibility()  # a different grouping starts fully visible
         self.groups_panel.refresh(self._controller.snapshot())
         if self._controller.display_mode == "grouping":
             self._controller.refresh_display()
@@ -408,6 +412,18 @@ class MainWindow(QMainWindow):
             return
         n = self._controller.apply_suggested(None)
         self.statusBar().showMessage(f"Applied all suggestions ({n:,} pts)")
+
+    def _on_group_visibility(self, group_id: int, visible: bool) -> None:
+        if self._controller:
+            self._controller.set_group_visibility(group_id, visible)
+
+    def _on_solo_group(self, group_id: int) -> None:
+        if self._controller:
+            self._controller.solo_group(group_id)
+
+    def _on_show_all_groups(self) -> None:
+        if self._controller:
+            self._controller.show_all_groups()
 
     # -- view actions -----------------------------------------------------
 

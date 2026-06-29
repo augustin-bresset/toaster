@@ -64,6 +64,10 @@ class Viewer(Protocol):
         """Adjust how points are drawn (pixel size and round-vs-flat shape)."""
         ...
 
+    def set_visible_mask(self, mask: np.ndarray | None) -> None:
+        """Show only points where ``mask`` is true; ``None`` shows all of them."""
+        ...
+
     def reset_camera(self) -> None:
         """Frame the whole cloud."""
         ...

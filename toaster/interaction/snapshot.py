@@ -35,6 +35,7 @@ class SegmentInfo:
     count: int
     color: Color
     suggested: int | None  # suggested class id, or None
+    visible: bool = True
 
 
 @dataclass(frozen=True)

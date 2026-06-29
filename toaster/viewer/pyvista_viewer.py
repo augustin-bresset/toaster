@@ -80,7 +80,12 @@ class PyVistaViewer:
         import pyvista as pv
 
         xyz = np.ascontiguousarray(xyz, dtype=np.float32)
-        self._colors = np.ascontiguousarray(colors, dtype=np.uint8)
+        # Store RGBA: the alpha channel doubles as the per-point visibility mask
+        # (alpha 0 == hidden) — reliable for points, unlike VTK ghost arrays.
+        rgb = np.ascontiguousarray(colors, dtype=np.uint8)
+        self._colors = np.empty((rgb.shape[0], 4), dtype=np.uint8)
+        self._colors[:, :3] = rgb
+        self._colors[:, 3] = 255
 
         if self._actor is not None:
             self.plotter.remove_actor(self._actor)
@@ -107,7 +112,8 @@ class PyVistaViewer:
     def update_colors(self, indices: np.ndarray, colors: np.ndarray) -> None:
         if self._cloud is None or self._colors is None:
             return
-        self._colors[np.asarray(indices, dtype=np.int64)] = colors
+        # Only the RGB channels; the alpha (visibility) channel is preserved.
+        self._colors[np.asarray(indices, dtype=np.int64), :3] = colors
         # Re-bind so VTK picks up the mutation across pyvista versions (no copy
         # for a contiguous array).
         self._cloud.point_data["colors"] = self._colors
@@ -155,6 +161,19 @@ class PyVistaViewer:
             prop.point_size = self.point_size
             prop.render_points_as_spheres = self.render_points_as_spheres
             self.render()
+
+    def set_visible_mask(self, mask: np.ndarray | None) -> None:
+        # Hide points via the alpha channel (0 == invisible) — index-stable, so
+        # the colour buffer, the pid array and picking all stay aligned, and no
+        # mesh rebuild is needed.
+        if self._cloud is None or self._colors is None:
+            return
+        if mask is None:
+            self._colors[:, 3] = 255
+        else:
+            self._colors[:, 3] = np.where(np.asarray(mask, dtype=bool), 255, 0).astype(np.uint8)
+        self._cloud.point_data["colors"] = self._colors
+        self.render()
 
     # -- interaction ------------------------------------------------------
 

@@ -26,11 +26,15 @@ def test_offscreen_set_and_recolor():
         viewer.highlight(np.array([3, 4]))
         viewer.clear_highlight()
         viewer.set_point_style(size=6, as_spheres=True)
+        mask = np.ones(200, dtype=bool)
+        mask[:50] = False
+        viewer.set_visible_mask(mask)  # ghost-array hide
+        viewer.set_visible_mask(None)  # show all
     except Exception as exc:  # pragma: no cover - depends on GL availability
         pytest.skip(f"off-screen rendering unavailable: {exc}")
 
-    # The owned colour buffer was mutated in place.
-    assert viewer._colors[0].tolist() == [255, 0, 0]
+    # The owned colour buffer (RGBA) was mutated in place.
+    assert viewer._colors[0][:3].tolist() == [255, 0, 0]
     assert viewer.point_size == 6
     assert viewer.render_points_as_spheres is True
 

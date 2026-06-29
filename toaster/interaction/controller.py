@@ -50,6 +50,7 @@ class InteractionController:
         self.session = session
         self.viewer = viewer
         self.display_mode: DisplayMode = "labels"
+        self._hidden_groups: set[int] = set()
         self._on_state_changed = on_state_changed
         viewer.set_point_pick_callback(self.on_pick)
         viewer.set_box_pick_callback(self.on_box)
@@ -61,6 +62,8 @@ class InteractionController:
         colors = self._colors_for_mode(self.display_mode)
         self.viewer.set_cloud(self.session.cloud.xyz, colors)
         self.viewer.highlight(self.session.selection.indices)
+        # set_cloud rebuilds a fully-visible mesh; re-apply any hidden segments.
+        self._apply_visibility()
 
     def set_display_mode(self, mode: DisplayMode) -> None:
         self.display_mode = mode
@@ -157,6 +160,7 @@ class InteractionController:
         )
         grouping = segmenter.segment(self.session.cloud, selection)
         self.session.add_grouping(grouping)
+        self._hidden_groups.clear()  # a fresh grouping starts fully visible
         self.set_display_mode("grouping")
         self._changed()
 
@@ -210,6 +214,47 @@ class InteractionController:
         labels = self.session.cloud.labels[indices]
         self.viewer.update_colors(indices, self.session.schema.colors_for(labels))
 
+    # -- per-group visibility ---------------------------------------------
+
+    def set_group_visibility(self, group_id: int, visible: bool) -> None:
+        """Show or hide one segment's points in the 3-D view."""
+        if self.session.active_grouping is None:
+            return
+        if visible:
+            self._hidden_groups.discard(group_id)
+        else:
+            self._hidden_groups.add(group_id)
+        self._apply_visibility()
+        self._changed()
+
+    def solo_group(self, group_id: int) -> None:
+        """Show only ``group_id``, hiding every other segment."""
+        grouping = self.session.active_grouping
+        if grouping is None:
+            return
+        self._hidden_groups = {int(g) for g in grouping.group_ids() if int(g) != group_id}
+        self._apply_visibility()
+        self._changed()
+
+    def show_all_groups(self) -> None:
+        """Make every segment visible again."""
+        self._hidden_groups.clear()
+        self._apply_visibility()
+        self._changed()
+
+    def reset_visibility(self) -> None:
+        """Drop all hidden state (e.g. when the active grouping changes)."""
+        self._hidden_groups.clear()
+        self._apply_visibility()
+
+    def _apply_visibility(self) -> None:
+        grouping = self.session.active_grouping
+        if grouping is None or not self._hidden_groups:
+            self.viewer.set_visible_mask(None)
+            return
+        hidden = np.isin(grouping.group_id, list(self._hidden_groups))
+        self.viewer.set_visible_mask(~hidden)
+
     # -- read model -------------------------------------------------------
 
     def snapshot(self) -> Snapshot:
@@ -235,6 +280,7 @@ class InteractionController:
                         count=int(active.indices_of(gid).size),
                         color=group_color(gid),
                         suggested=suggested.get(gid),
+                        visible=gid not in self._hidden_groups,
                     )
                 )
 

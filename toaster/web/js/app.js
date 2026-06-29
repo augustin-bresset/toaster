@@ -12,6 +12,8 @@ let cloud = { xyz: null, features: {} };
 let state = null; // decoded { snapshot, labels, grouping, selection }
 let pickMode = "point";
 let currentGroup = null;
+let focusGroup = null; // a group to scroll/flash in the Segments window after a re-render
+let topZ = 10;
 
 const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
 const hex = (c) => "#" + c.map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -106,6 +108,7 @@ function renderGroups() {
   for (const seg of segs) {
     const row = document.createElement("div");
     row.className = "item" + (seg.id === currentGroup ? " active" : "");
+    row.dataset.gid = seg.id;
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = seg.visible;
@@ -126,6 +129,18 @@ function renderGroups() {
       api.groupSelect(seg.id).then(applyState);
     };
     box.appendChild(row);
+  }
+
+  // A click in the 3-D cloud asked us to focus its segment here: scroll + flash.
+  if (focusGroup != null) {
+    showGroupsWindow();
+    const row = box.querySelector(`[data-gid="${focusGroup}"]`);
+    if (row) {
+      row.scrollIntoView({ block: "nearest" });
+      row.classList.add("flash");
+      setTimeout(() => row.classList.remove("flash"), 800);
+    }
+    focusGroup = null;
   }
 }
 
@@ -167,8 +182,43 @@ function wire() {
   document.querySelectorAll("[data-mode-pick]").forEach((b) => {
     b.onclick = () => setPickMode(b.dataset.modePick);
   });
+  document.querySelectorAll("[data-close]").forEach((b) => {
+    b.onclick = () => (el(b.dataset.close).style.display = "none");
+  });
+  setupWindows();
   setupPointer();
   window.addEventListener("keydown", onKey);
+}
+
+// Make each floating window draggable by its title bar and raise it on focus.
+function setupWindows() {
+  document.querySelectorAll(".window").forEach((win) => {
+    win.addEventListener("pointerdown", () => (win.style.zIndex = ++topZ));
+    const bar = win.querySelector(".titlebar");
+    let dx = 0, dy = 0, dragging = false;
+    bar.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("button")) return;
+      dragging = true;
+      const r = win.getBoundingClientRect();
+      dx = e.clientX - r.left;
+      dy = e.clientY - r.top;
+      bar.setPointerCapture(e.pointerId);
+    });
+    bar.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      win.style.left = e.clientX - dx + "px";
+      win.style.top = e.clientY - dy + "px";
+      win.style.right = "auto";
+    });
+    bar.addEventListener("pointerup", (e) => {
+      dragging = false;
+      bar.releasePointerCapture(e.pointerId);
+    });
+  });
+}
+
+function setLoading(on) {
+  el("loading").classList.toggle("on", on);
 }
 
 async function act(name) {
@@ -182,6 +232,8 @@ async function act(name) {
 }
 
 function onKey(e) {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
   if (e.key === "Enter") act("assign");
   else if (e.ctrlKey && e.key === "z") act("undo");
   else if (e.ctrlKey && (e.key === "y" || (e.shiftKey && e.key === "Z"))) act("redo");
@@ -197,11 +249,22 @@ async function runSegmenter() {
   const ms = Math.max(1, Math.round(+el("seg-ms").value || 10));
   const params = n === "dbscan" ? { eps, min_samples: ms } : { min_cluster_size: ms };
   el("status").textContent = `running ${n}…`;
+  setLoading(true);
   try {
     applyState(await api.segment(n, params, el("seg-scope").checked));
+    showGroupsWindow();
   } catch (e) {
     el("status").textContent = "segmentation failed: " + e.message;
+  } finally {
+    setLoading(false);
   }
+}
+
+// The Segments window appears (and comes to front) when a grouping is produced.
+function showGroupsWindow() {
+  const win = el("win-groups");
+  win.style.display = "flex";
+  win.style.zIndex = ++topZ;
 }
 
 function setPickMode(mode) {
@@ -243,7 +306,15 @@ function setupPointer() {
       if (idx.length) api.box(idx, modifiers(e)).then(applyState);
     } else if (!start.moved) {
       const i = viewer.pick(e.clientX, e.clientY);
-      if (i >= 0) api.pick(i, modifiers(e)).then(applyState);
+      if (i >= 0) {
+        // If a grouping is active, remember which segment was clicked so the
+        // Segments window scrolls to and flashes it after the re-render.
+        if (state.grouping) {
+          currentGroup = state.grouping[i];
+          focusGroup = currentGroup;
+        }
+        api.pick(i, modifiers(e)).then(applyState);
+      }
     }
   });
 }

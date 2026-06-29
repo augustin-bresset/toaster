@@ -32,3 +32,9 @@ def test_top_level_import_is_headless():
 def test_segment_import_is_headless():
     # Segmenters use sklearn, but must not pull the rendering stack.
     assert _imported_gui_modules("toaster.segment") == ""
+
+
+def test_interaction_import_is_headless():
+    # The interaction controller drives any front-end; importing it must not
+    # drag in Qt/VTK, so a non-Qt client can reuse it.
+    assert _imported_gui_modules("toaster.interaction") == ""

@@ -6,8 +6,7 @@ Importing names here pulls in Qt/PyVista, so ``toaster.app`` is imported lazily
 
 from __future__ import annotations
 
-from .controller import InteractionController
 from .run import run
 from .schema_loader import builtin_schema, builtin_schema_names
 
-__all__ = ["run", "InteractionController", "builtin_schema", "builtin_schema_names"]
+__all__ = ["run", "builtin_schema", "builtin_schema_names"]

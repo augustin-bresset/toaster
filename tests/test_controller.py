@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from toaster.app.controller import InteractionController
 from toaster.core import Grouping, Session
+from toaster.interaction import InteractionController
 
 
 class FakeViewer:

@@ -1,10 +1,10 @@
-"""The interaction controller — the workflow glue, deliberately Qt-free.
+"""The interaction controller — the workflow glue, front-end agnostic.
 
 It wires viewer callbacks (pick / box) and UI commands (assign / undo / run a
 segmenter / change display) to the :class:`~toaster.core.Session`. Because it
 talks to the viewer only through the :class:`~toaster.viewer.base.Viewer`
-protocol (numpy in, indices out) and never imports Qt, it can be unit-tested
-with a fake viewer.
+protocol (numpy in, indices out) and never imports Qt, it can be driven by any
+front-end (Qt today, a web client tomorrow) and unit-tested with a fake viewer.
 """
 
 from __future__ import annotations

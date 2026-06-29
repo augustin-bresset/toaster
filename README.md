@@ -146,14 +146,16 @@ toaster/
   io/           pluggable loaders (registry) — .ply/.bin/.las/.pcd (+apairo)
   segment/      pluggable segmenters (registry) — dbscan/hdbscan/model
   viewer/       Viewer protocol + PyVista backend (swappable; no VTK leaks out)
-  app/          Qt UI + interaction controller (the only layer touching all)
+  interaction/  front-end-agnostic controller (workflow glue, no Qt/VTK)
+  app/          Qt UI — wires widgets to the interaction controller
   persistence/  label sidecar + session JSON
 ```
 
 Dependency rule: `core` depends on nothing; `io/segment/persistence` depend only
-on `core`; `viewer` adds PyVista; `app` is the only layer that touches everything.
-The `Viewer` protocol passes only numpy arrays and indices, so the renderer is
-replaceable.
+on `core`; `viewer` adds PyVista; `interaction` glues core + viewer protocol but
+stays headless; `app` is the only layer that touches everything. The `Viewer`
+protocol passes only numpy arrays and indices, so the renderer is replaceable,
+and the headless `interaction` controller can be driven by a non-Qt front-end.
 
 ## Development
 

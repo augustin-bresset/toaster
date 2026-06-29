@@ -17,11 +17,11 @@ from qtpy.QtWidgets import (
 )
 
 from toaster.core import LabelSchema, PointCloud, Session
+from toaster.interaction import InteractionController
 from toaster.io import load_cloud, supported_extensions
 from toaster.persistence import LabelStore, SchemaStore, SessionStore
 from toaster.viewer import PyVistaViewer
 
-from .controller import InteractionController
 from .panels import ClassPalette, DisplayPanel, LayersPanel, SegmenterPanel
 from .schema_loader import builtin_schema
 

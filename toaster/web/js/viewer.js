@@ -119,6 +119,16 @@ export class Viewer {
     this.controls.enabled = on;
   }
 
+  // Box mode: free the LEFT button for rubber-band selection while keeping the
+  // camera movable — RIGHT orbits, MIDDLE pans, wheel zooms (always on).
+  setBoxMode(on) {
+    const M = THREE.MOUSE;
+    this.controls.enabled = true;
+    this.controls.mouseButtons = on
+      ? { LEFT: null, MIDDLE: M.PAN, RIGHT: M.ROTATE }
+      : { LEFT: M.ROTATE, MIDDLE: M.DOLLY, RIGHT: M.PAN };
+  }
+
   // Nearest *visible* point to a screen position, or -1. Robust (no raycaster
   // threshold tuning): projects every point once per click.
   pick(clientX, clientY) {

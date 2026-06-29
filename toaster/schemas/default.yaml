@@ -1,24 +1,14 @@
 # Toaster default label schema (apairo-compatible format).
-# Muted, modern semantic colours (sober, good on a dark viewport).
+# Minimal traversability set: unlabeled / traversable / obstacle.
 # ignore_index marks "not yet annotated".
 ignore_index: 0
 
 color_map:
-  0: '#5a606e'  # unlabeled  - slate grey
-  1: '#8d8374'  # ground     - taupe
-  2: '#6a994e'  # vegetation - muted green
-  3: '#5b7aa5'  # building   - dusty blue
-  4: '#bc4b51'  # vehicle    - muted red
-  5: '#d39a4e'  # person     - amber
-  6: '#8a6fa8'  # pole       - muted purple
-  7: '#5aa6a6'  # other      - teal
+  0: '#5a606e'  # unlabeled   - slate grey
+  1: '#3f9b5b'  # traversable - green
+  2: '#d23b2e'  # obstacle    - red
 
 semantic_map:
   0: unlabeled
-  1: ground
-  2: vegetation
-  3: building
-  4: vehicle
-  5: person
-  6: pole
-  7: other
+  1: traversable
+  2: obstacle

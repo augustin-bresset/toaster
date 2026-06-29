@@ -281,7 +281,7 @@ function setPickMode(mode) {
   document.querySelectorAll("[data-mode-pick]").forEach((b) => {
     b.classList.toggle("active", b.dataset.modePick === mode);
   });
-  viewer.setControlsEnabled(mode === "point");
+  viewer.setBoxMode(mode === "box"); // box mode keeps camera on right-drag / wheel
 }
 
 function setupPointer() {

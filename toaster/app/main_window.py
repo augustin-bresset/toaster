@@ -378,7 +378,7 @@ class MainWindow(QMainWindow):
         if self._session is None:
             return
         self._session.set_active_grouping(index)
-        self.groups_panel.refresh(self._session)
+        self.groups_panel.refresh(self._controller.snapshot())
         if self._controller.display_mode == "grouping":
             self._controller.refresh_display()
 
@@ -427,17 +427,15 @@ class MainWindow(QMainWindow):
     # -- misc -------------------------------------------------------------
 
     def _refresh_panels(self) -> None:
-        if self._session is None:
+        if self._session is None or self._controller is None:
             return
-        self.layers_panel.refresh(self._session)
-        self.groups_panel.refresh(self._session)
-        sel = self._session.selection
-        try:
-            class_name = self.schema.get(self._session.active_class).name
-        except KeyError:
-            class_name = str(self._session.active_class)
-        mode = self._controller.display_mode if self._controller else "labels"
-        self._status_perm.setText(f"Sel: {sel.count:,}  |  Class: {class_name}  |  View: {mode}")
+        snap = self._controller.snapshot()
+        self.layers_panel.refresh(snap)
+        self.groups_panel.refresh(snap)
+        self._status_perm.setText(
+            f"Sel: {snap.selection_count:,}  |  "
+            f"Class: {snap.class_name(snap.active_class)}  |  View: {snap.display_mode}"
+        )
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         # Closing the interactor cleanly avoids a VTK segfault on exit.

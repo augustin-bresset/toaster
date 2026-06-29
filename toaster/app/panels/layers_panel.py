@@ -5,7 +5,7 @@ from __future__ import annotations
 from qtpy.QtCore import Signal
 from qtpy.QtWidgets import QComboBox, QLabel, QVBoxLayout, QWidget
 
-from toaster.core import Session
+from toaster.interaction import Snapshot
 
 __all__ = ["LayersPanel"]
 
@@ -28,21 +28,21 @@ class LayersPanel(QWidget):
         layout.addStretch(1)
         self._suppress = False
 
-    def refresh(self, session: Session) -> None:
-        """Rebuild the grouping list and stats from the session state."""
+    def refresh(self, snap: Snapshot) -> None:
+        """Rebuild the grouping list and stats from a session snapshot."""
         self._suppress = True
         self._combo.clear()
         self._combo.addItem("None (pick single points)", userData=None)
-        for i, g in enumerate(session.groupings):
-            self._combo.addItem(f"#{i} {g.source} ({g.n_groups} groups)", userData=i)
-        active = session.active_grouping_index
+        for g in snap.groupings:
+            self._combo.addItem(f"#{g.index} {g.source} ({g.n_groups} groups)", userData=g.index)
+        active = snap.active_grouping_index
         self._combo.setCurrentIndex(0 if active is None else active + 1)
         self._suppress = False
 
         self._stats.setText(
-            f"Selected: {session.selection.count} pts\n"
-            f"Active class: {session.active_class}\n"
-            f"Groupings: {len(session.groupings)}"
+            f"Selected: {snap.selection_count} pts\n"
+            f"Active class: {snap.class_name(snap.active_class)}\n"
+            f"Groupings: {len(snap.groupings)}"
         )
 
     def _emit_choice(self, _index: int) -> None:

@@ -22,8 +22,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from toaster.core import Session
-from toaster.viewer.colormap import group_color
+from toaster.interaction import Snapshot
 
 __all__ = ["GroupsPanel"]
 
@@ -63,46 +62,44 @@ class GroupsPanel(QWidget):
         # Track what is currently rendered so a plain selection/label change
         # (which calls refresh too) does not rebuild the list and drop the row
         # the user just clicked.
-        self._rendered = None
-        self._rendered_n = 0
+        self._signature: object = None
         self.refresh(None)
 
-    def refresh(self, session: Session | None) -> None:
+    def refresh(self, snap: Snapshot | None) -> None:
         """Rebuild the segment list, but only when the active grouping changed."""
-        grouping = session.active_grouping if session is not None else None
-        if grouping is self._rendered and (
-            grouping is None or grouping.n_groups == self._rendered_n
-        ):
+        segments = snap.segments if snap is not None else []
+        # A signature over what is shown: rebuild only when it actually changes.
+        signature = (
+            None
+            if snap is None or snap.active_grouping is None
+            else (snap.active_grouping_index, tuple((s.id, s.suggested) for s in segments))
+        )
+        if signature == self._signature:
             return
-        self._rendered = grouping
-        self._rendered_n = grouping.n_groups if grouping is not None else 0
+        self._signature = signature
 
         self._list.blockSignals(True)
         self._list.clear()
 
-        if grouping is None:
+        if signature is None:
             self._header.setText("Segments — run a segmenter to populate")
             self._list.blockSignals(False)
             self._set_buttons_enabled(has_groups=False, has_suggestions=False)
             return
 
-        suggestions = grouping.suggested_labels or {}
-        schema = session.schema
-        for gid in grouping.group_ids():
-            count = int(grouping.indices_of(gid).size)
-            text = f"#{gid}  ·  {count:,} pts"
-            suggestion = suggestions.get(int(gid))
-            if suggestion is not None and suggestion in schema:
-                text += f"  →  {schema.get(suggestion).name}"
+        for seg in segments:
+            text = f"#{seg.id}  ·  {seg.count:,} pts"
+            if seg.suggested is not None:
+                text += f"  →  {snap.class_name(seg.suggested)}"
             item = QListWidgetItem(text)
-            item.setIcon(_swatch(group_color(int(gid))))
-            item.setData(Qt.ItemDataRole.UserRole, int(gid))
-            item.setData(Qt.ItemDataRole.UserRole + 1, suggestion is not None)
+            item.setIcon(_swatch(seg.color))
+            item.setData(Qt.ItemDataRole.UserRole, seg.id)
             self._list.addItem(item)
 
-        self._header.setText(f"{grouping.n_groups} segments  ·  {grouping.source}")
+        info = snap.active_grouping
+        self._header.setText(f"{info.n_groups} segments  ·  {info.source}")
         self._list.blockSignals(False)
-        self._set_buttons_enabled(has_groups=True, has_suggestions=bool(suggestions))
+        self._set_buttons_enabled(has_groups=True, has_suggestions=snap.has_suggestions)
 
     # -- internals --------------------------------------------------------
 

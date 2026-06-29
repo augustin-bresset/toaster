@@ -9,5 +9,13 @@ a future web client can all drive the same :class:`InteractionController`.
 from __future__ import annotations
 
 from .controller import DisplayMode, InteractionController
+from .snapshot import ClassInfo, GroupingInfo, SegmentInfo, Snapshot
 
-__all__ = ["InteractionController", "DisplayMode"]
+__all__ = [
+    "InteractionController",
+    "DisplayMode",
+    "Snapshot",
+    "ClassInfo",
+    "SegmentInfo",
+    "GroupingInfo",
+]

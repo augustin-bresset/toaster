@@ -17,7 +17,14 @@ from toaster.core import Selection, Session
 from toaster.core.types import NOISE
 from toaster.segment.base import Segmenter
 from toaster.viewer.base import Modifiers, Viewer
-from toaster.viewer.colormap import colors_from_grouping, colors_from_labels, colors_from_scalar
+from toaster.viewer.colormap import (
+    colors_from_grouping,
+    colors_from_labels,
+    colors_from_scalar,
+    group_color,
+)
+
+from .snapshot import ClassInfo, GroupingInfo, SegmentInfo, Snapshot
 
 __all__ = ["InteractionController", "DisplayMode"]
 
@@ -202,6 +209,47 @@ class InteractionController:
         # labelled segment is visibly "consumed" even while colouring by grouping.
         labels = self.session.cloud.labels[indices]
         self.viewer.update_colors(indices, self.session.schema.colors_for(labels))
+
+    # -- read model -------------------------------------------------------
+
+    def snapshot(self) -> Snapshot:
+        """A flat, serializable read-model of the session for any front-end."""
+        session = self.session
+        schema = session.schema
+        classes = [ClassInfo(c.id, c.name, c.color) for c in schema.classes]
+        groupings = [GroupingInfo(i, g.source, g.n_groups) for i, g in enumerate(session.groupings)]
+        active_index = session.active_grouping_index
+        active_info = groupings[active_index] if active_index is not None else None
+
+        segments: list[SegmentInfo] = []
+        has_suggestions = False
+        active = session.active_grouping
+        if active is not None:
+            suggested = active.suggested_labels or {}
+            has_suggestions = bool(suggested)
+            for gid in active.group_ids():
+                gid = int(gid)
+                segments.append(
+                    SegmentInfo(
+                        id=gid,
+                        count=int(active.indices_of(gid).size),
+                        color=group_color(gid),
+                        suggested=suggested.get(gid),
+                    )
+                )
+
+        return Snapshot(
+            classes=classes,
+            active_class=session.active_class,
+            unlabeled_id=schema.unlabeled_id,
+            display_mode=self.display_mode,
+            selection_count=session.selection.count,
+            groupings=groupings,
+            active_grouping_index=active_index,
+            active_grouping=active_info,
+            segments=segments,
+            has_suggestions=has_suggestions,
+        )
 
     # -- helpers ----------------------------------------------------------
 

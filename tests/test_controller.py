@@ -145,6 +145,27 @@ def test_group_ops_noop_without_active_grouping(two_clusters, schema):
     assert ctl.apply_suggested() == 0
 
 
+def test_snapshot_is_a_flat_serializable_read_model(two_clusters, schema):
+    from dataclasses import asdict
+
+    session = _grouped_session(two_clusters, schema)  # grouping with suggested {1: 2}
+    ctl = InteractionController(session, FakeViewer())
+    ctl.set_active_class(1)
+    snap = ctl.snapshot()
+
+    assert [c.id for c in snap.classes] == [0, 1, 2]
+    assert snap.active_class == 1
+    assert snap.class_name(1) == "a"
+    assert snap.active_grouping is not None and snap.active_grouping.n_groups == 2
+    assert len(snap.segments) == 2
+    seg1 = next(s for s in snap.segments if s.id == 1)
+    assert seg1.count == 50
+    assert seg1.suggested == 2
+    assert snap.has_suggestions is True
+    # No numpy / domain objects: a plain dict (i.e. wire-ready) round-trips.
+    asdict(snap)
+
+
 def test_run_segmenter_sets_active_grouping(two_clusters, schema):
     from toaster.segment import get_segmenter
 

@@ -658,8 +658,22 @@ function setupPointer() {
 
   // Double-click = label in one gesture: select what a click would select
   // (the whole group if a grouping is active, the voxel in voxel mode, else the
-  // single point) and stamp it with the active class.
+  // single point) and stamp it with the active class. Works the same in point,
+  // box and voxel modes. Bound to BOTH buttons — a plain left double-click, and
+  // a right double-click (browser menu suppressed) for users who reach for the
+  // right button; neither moves the camera or disturbs the left-click selection.
   dom.addEventListener("dblclick", labelUnderCursor);
+  let lastRight = 0;
+  dom.addEventListener("contextmenu", (e) => {
+    e.preventDefault(); // no browser context menu over the cloud
+    const now = performance.now();
+    if (now - lastRight < 400) {
+      lastRight = 0;
+      labelUnderCursor(e);
+    } else {
+      lastRight = now;
+    }
+  });
 }
 
 async function labelUnderCursor(e) {

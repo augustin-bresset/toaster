@@ -29,10 +29,12 @@ open3d = ["open3d"]
 hdbscan = ["hdbscan"]
 models = ["onnxruntime-gpu"]
 torch = ["torch"]
-dev = ["pytest", "pytest-qt", "ruff"]
+api = ["fastapi", "uvicorn[standard]"]
+dev = ["pytest", "pytest-qt", "ruff", "httpx"]
 
 [project.scripts]
 toaster = "toaster.cli:main"
+toaster-web = "toaster.api.server:main"
 
 [project.urls]
 Homepage = "https://github.com/augustin-b/toaster"

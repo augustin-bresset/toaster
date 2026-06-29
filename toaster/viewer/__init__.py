@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .base import BoxPickCallback, Modifiers, PointPickCallback, Viewer
 from .colormap import colors_from_grouping, colors_from_labels, colors_from_scalar
+from .null_viewer import NullViewer
 
 __all__ = [
     "Viewer",
@@ -18,6 +19,7 @@ __all__ = [
     "colors_from_labels",
     "colors_from_grouping",
     "colors_from_scalar",
+    "NullViewer",
     "PyVistaViewer",
 ]
 

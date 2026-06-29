@@ -257,6 +257,23 @@ class InteractionController:
 
     # -- read model -------------------------------------------------------
 
+    def cloud_xyz(self) -> np.ndarray:
+        """The point positions ``(N, 3)`` float32 (served once to a front-end)."""
+        return self.session.cloud.xyz
+
+    def label_array(self) -> np.ndarray:
+        """The current per-point labels ``(N,)`` int32."""
+        return self.session.cloud.ensure_labels(self.session.schema.unlabeled_id)
+
+    def grouping_array(self) -> np.ndarray | None:
+        """The active grouping ``group_id (N,)`` int32, or ``None`` if no grouping."""
+        grouping = self.session.active_grouping
+        return None if grouping is None else grouping.group_id
+
+    def selection_indices(self) -> np.ndarray:
+        """The currently selected point indices ``(M,)`` int64."""
+        return self.session.selection.indices
+
     def snapshot(self) -> Snapshot:
         """A flat, serializable read-model of the session for any front-end."""
         session = self.session

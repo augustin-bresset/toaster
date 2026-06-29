@@ -36,8 +36,17 @@ toaster cloud.ply --schema my_classes.yaml
 
 - Left-click a point to select it (whole cluster, if a grouping is active).
   Hold **Shift** to add, **Ctrl** to subtract. Press **R** then drag for a box select.
-- Press **1–9** to assign the i-th class to the selection. **Ctrl+Z / Ctrl+Shift+Z**
-  to undo/redo. **Ctrl+S** saves labels beside the cloud (`<cloud>.toaster.npy`).
+  Left-drag orbits the camera (it no longer selects); scroll to zoom.
+- **To label: select points, then assign a class** — press the number shown beside
+  the class in the *Classes* panel, click the **Assign** toolbar button, or press
+  **Enter** (uses the highlighted class; `0` clears back to unlabeled).
+  **Ctrl+Z / Ctrl+Shift+Z** to undo/redo. **Ctrl+S** saves labels *and* the schema
+  beside the cloud (`<cloud>.toaster.npy` / `.toaster.schema.yaml`), both restored
+  on reopen.
+- The *Classes* panel configures what you label into: **Add / Rename / Remove** a
+  class, double-click to recolour. *File ▸ Load/Save schema…* imports/exports the
+  palette as apairo-style YAML.
+- The *Panels* menu hides/shows each dock — handy if you closed one by accident.
 - The *Segmenter* panel runs DBSCAN/HDBSCAN (optionally on the current selection);
   the result becomes the active grouping, then a click labels a whole cluster.
 

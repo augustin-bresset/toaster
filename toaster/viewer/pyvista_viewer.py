@@ -36,6 +36,9 @@ class PyVistaViewer:
     HIGHLIGHT_COLOR = "#ffd400"
     #: Default viewport background (dark slate, like most annotation tools).
     BACKGROUND = "#1f2430"
+    #: Pointer travel (px, Manhattan) above which a left-drag counts as an orbit
+    #: rather than a click-to-select.
+    DRAG_TOLERANCE_PX = 5
 
     def __init__(
         self,
@@ -59,6 +62,12 @@ class PyVistaViewer:
         self._point_cb: PointPickCallback | None = None
         self._box_cb: BoxPickCallback | None = None
         self._pick_mode: str = "point"
+
+        # Left-click vs. left-drag discrimination (see _enable_click_to_select).
+        self._press_xy: tuple[int, int] | None = None
+        self._dragged: bool = False
+        self._gesture_observers: list[int] = []
+        self._picker: Any | None = None
 
         try:
             self.plotter.set_background(self.BACKGROUND)
@@ -88,8 +97,12 @@ class PyVistaViewer:
             point_size=self.point_size,
             render_points_as_spheres=self.render_points_as_spheres,
             lighting=False,
+            reset_camera=False,
         )
-        self.reset_camera()
+        # NB: do not reset the camera here. ``set_cloud`` also runs on every
+        # recolour / display-mode switch, and re-framing then would throw away
+        # the view the user has orbited to. Initial framing is the caller's job
+        # (MainWindow.open_cloud calls ``reset_camera`` once after the first load).
 
     def update_colors(self, indices: np.ndarray, colors: np.ndarray) -> None:
         if self._cloud is None or self._colors is None:
@@ -118,6 +131,12 @@ class PyVistaViewer:
             point_size=self.point_size + 4,
             render_points_as_spheres=True,
             lighting=False,
+            # Adding an actor re-frames the camera by default unless the camera
+            # is flagged "set" — which interactive orbiting never does — so every
+            # selection would snap the view back. The overlay must never move the
+            # camera, and must not intercept the next pick.
+            reset_camera=False,
+            pickable=False,
         )
         self.render()
 
@@ -165,24 +184,83 @@ class PyVistaViewer:
             self.plotter.disable_picking()
         except Exception:
             pass
+        self._clear_gesture_observers()
         if self._pick_mode == "point" and self._point_cb is not None:
-            self.plotter.enable_point_picking(
-                callback=self._on_pick, show_message=False, left_clicking=True
-            )
+            self._enable_click_to_select()
         elif self._pick_mode == "box" and self._box_cb is not None:
             self.plotter.enable_cell_picking(
                 callback=self._on_box, through=True, show=False, style="wireframe"
             )
 
-    def _on_pick(self, *args: Any) -> None:
-        if self._point_cb is None or self._cloud is None:
+    def _enable_click_to_select(self) -> None:
+        """Select on a left *click*, while a left *drag* orbits the camera untouched.
+
+        VTK's trackball style already orbits on left-drag, but PyVista's built-in
+        point picking fires on the button *press* — so the instant an orbit began
+        it would select a point (and, via the selection overlay, re-frame the
+        camera). We watch the gesture ourselves instead: record where the button
+        went down, mark it a drag once the pointer travels past
+        :attr:`DRAG_TOLERANCE_PX`, and only pick on release when it stayed put.
+        """
+        from vtkmodules.vtkRenderingCore import vtkPointPicker
+
+        if self._picker is None:
+            self._picker = vtkPointPicker()
+            self._picker.SetTolerance(0.025)
+
+        iren = self.plotter.iren
+        self._press_xy = None
+        self._dragged = False
+        self._gesture_observers = [
+            iren.add_observer("LeftButtonPressEvent", self._on_left_press),
+            iren.add_observer("MouseMoveEvent", self._on_mouse_move),
+            iren.add_observer("LeftButtonReleaseEvent", self._on_left_release),
+        ]
+
+    def _clear_gesture_observers(self) -> None:
+        iren = getattr(self.plotter, "iren", None)
+        if iren is not None:
+            for obs in self._gesture_observers:
+                try:
+                    iren.remove_observer(obs)
+                except Exception:
+                    pass
+        self._gesture_observers = []
+        self._press_xy = None
+        self._dragged = False
+
+    def _event_xy(self) -> tuple[int, int]:
+        x, y = self.plotter.iren.interactor.GetEventPosition()
+        return int(x), int(y)
+
+    def _on_left_press(self, *args: Any) -> None:
+        self._press_xy = self._event_xy()
+        self._dragged = False
+
+    def _on_mouse_move(self, *args: Any) -> None:
+        if self._press_xy is None:
             return
-        point = getattr(self.plotter, "picked_point", None)
-        if point is None and args:
-            point = args[0]
-        if point is None:
+        x, y = self._event_xy()
+        if abs(x - self._press_xy[0]) + abs(y - self._press_xy[1]) > self.DRAG_TOLERANCE_PX:
+            self._dragged = True
+
+    def _on_left_release(self, *args: Any) -> None:
+        press_xy, dragged = self._press_xy, self._dragged
+        self._press_xy = None
+        self._dragged = False
+        if press_xy is None or dragged:
+            return  # an orbit (or a press that began off-canvas) — not a selection
+        self._select_at(*self._event_xy())
+
+    def _select_at(self, x: int, y: int) -> None:
+        if self._point_cb is None or self._cloud is None or self._picker is None:
             return
-        index = int(self._cloud.find_closest_point(np.asarray(point)))
+        renderer = self.plotter.iren.get_poked_renderer()
+        self._picker.Pick(x, y, 0, renderer)
+        if self._picker.GetDataSet() is None:
+            return  # clicked empty space — leave the current selection alone
+        point = np.asarray(self._picker.GetPickPosition())
+        index = int(self._cloud.find_closest_point(point))
         self._point_cb(index, self._modifiers())
 
     def _on_box(self, picked: Any) -> None:

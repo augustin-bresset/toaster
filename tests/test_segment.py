@@ -22,6 +22,16 @@ def test_segmenter_scoped_to_selection_marks_rest_noise(two_clusters):
     assert grouping.n_groups == 1
 
 
+def test_clusterers_on_one_point_return_all_noise(two_clusters):
+    # A one-point selection must not crash the clusterer (sklearn raises on
+    # n_samples=1); it yields an empty grouping instead.
+    one = Selection.from_indices(np.array([0]), two_clusters.n)
+    for name in ("dbscan", "hdbscan"):
+        grouping = get_segmenter(name).segment(two_clusters, one)
+        assert grouping.n_groups == 0
+        assert np.all(grouping.group_id == -1)
+
+
 def test_registry_lists_builtins():
     names = available_segmenters()
     assert "dbscan" in names and "hdbscan" in names

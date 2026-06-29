@@ -17,6 +17,20 @@ __all__ = ["LabelClass", "LabelSchema"]
 
 Color = tuple[int, int, int]
 
+#: Perceptually-spread default hues handed out to newly added classes.
+_AUTO_PALETTE = [
+    "#8c6d31",
+    "#2ca02c",
+    "#1f77b4",
+    "#d62728",
+    "#ff7f0e",
+    "#9467bd",
+    "#17becf",
+    "#e377c2",
+    "#bcbd22",
+    "#7f7f7f",
+]
+
 
 @dataclass(frozen=True)
 class LabelClass:
@@ -77,6 +91,55 @@ class LabelSchema:
         self.classes[self.classes.index(old)] = new
         self._lut = None
 
+    # -- editing ----------------------------------------------------------
+
+    def add_class(
+        self, name: str, color: Color | None = None, class_id: int | None = None
+    ) -> LabelClass:
+        """Append a new class and return it.
+
+        ``class_id`` defaults to one past the current largest id; ``color``
+        defaults to the first unused colour from the built-in palette.
+        """
+        if class_id is None:
+            class_id = self.max_id + 1
+        if class_id in self._by_id:
+            raise ValueError(f"class id {class_id} already exists")
+        rgb = self._auto_color() if color is None else _parse_color(color)
+        cls = LabelClass(id=int(class_id), name=str(name), color=rgb)
+        self.classes.append(cls)
+        self._by_id[cls.id] = cls
+        self._lut = None
+        return cls
+
+    def rename(self, class_id: int, name: str) -> None:
+        """Rename a class in place (raises if ``class_id`` is unknown)."""
+        old = self._by_id[class_id]
+        new = LabelClass(id=old.id, name=str(name), color=old.color)
+        self._by_id[class_id] = new
+        self.classes[self.classes.index(old)] = new
+
+    def remove(self, class_id: int) -> None:
+        """Delete a class. Refuses to remove the ``unlabeled`` class.
+
+        Points already labelled with the removed id keep that id on disk but
+        render as ``unlabeled`` (see :meth:`colors_for`), so nothing crashes.
+        """
+        if class_id == self.unlabeled_id:
+            raise ValueError("cannot remove the unlabeled class")
+        cls = self._by_id.pop(class_id)
+        self.classes.remove(cls)
+        self._lut = None
+
+    def _auto_color(self) -> Color:
+        """First palette colour not already in use (cycles once exhausted)."""
+        used = {c.color for c in self.classes}
+        for hex_value in _AUTO_PALETTE:
+            color = _parse_color(hex_value)
+            if color not in used:
+                return color
+        return _parse_color(_AUTO_PALETTE[len(self.classes) % len(_AUTO_PALETTE)])
+
     def __iter__(self):
         return iter(self.classes)
 
@@ -125,6 +188,22 @@ class LabelSchema:
         with open(path) as fh:
             data = yaml.safe_load(fh)
         return cls.from_config(data)
+
+    def to_config(self) -> dict:
+        """Serialize to the apairo-style config dict (inverse of :meth:`from_config`)."""
+        return {
+            "ignore_index": int(self.unlabeled_id),
+            "color_map": {c.id: "#{:02x}{:02x}{:02x}".format(*c.color) for c in self.classes},
+            "semantic_map": {c.id: c.name for c in self.classes},
+        }
+
+    def to_yaml(self, path: str | Path) -> Path:
+        """Write the schema to ``path`` as an apairo-style YAML and return it."""
+        out = Path(path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "w") as fh:
+            yaml.safe_dump(self.to_config(), fh, sort_keys=True)
+        return out
 
     @classmethod
     def from_config(cls, data: dict) -> LabelSchema:

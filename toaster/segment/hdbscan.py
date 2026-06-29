@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from toaster.core import Grouping, PointCloud, Selection
 
-from .base import resolve_points, scatter
+from .base import all_noise, resolve_points, scatter
 
 __all__ = ["HDBSCANSegmenter"]
 
@@ -33,6 +33,8 @@ class HDBSCANSegmenter:
         from sklearn.cluster import HDBSCAN
 
         xyz, indices = resolve_points(cloud, selection)
+        if len(xyz) < 2:  # sklearn aborts on a single sample; nothing to cluster
+            return all_noise(indices, cloud.n, source=self.name)
         labels = HDBSCAN(
             min_cluster_size=self.min_cluster_size,
             min_samples=self.min_samples,

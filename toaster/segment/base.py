@@ -19,7 +19,7 @@ import numpy as np
 from toaster.core import Grouping, PointCloud, Selection
 from toaster.core.types import NOISE
 
-__all__ = ["Segmenter", "resolve_points", "gather_inputs", "scatter"]
+__all__ = ["Segmenter", "resolve_points", "gather_inputs", "scatter", "all_noise"]
 
 
 @runtime_checkable
@@ -70,6 +70,15 @@ def gather_inputs(
         cols.append(feat if feat.ndim == 2 else feat[:, None])
     out = cols[0] if len(cols) == 1 else np.hstack(cols)
     return np.ascontiguousarray(out, dtype=np.float32)
+
+
+def all_noise(indices: np.ndarray, n: int, *, source: str = "unknown") -> Grouping:
+    """A grouping with no clusters — every point is noise.
+
+    Returned when there is nothing to cluster (e.g. a one-point selection), so a
+    degenerate input yields an empty result instead of crashing the clusterer.
+    """
+    return scatter(np.full(len(indices), NOISE, dtype=np.int32), indices, n, source=source)
 
 
 def scatter(

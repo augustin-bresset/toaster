@@ -2,7 +2,28 @@ from __future__ import annotations
 
 import numpy as np
 
-from toaster.persistence import LabelStore, SessionState, SessionStore
+from toaster.core import LabelClass, LabelSchema
+from toaster.persistence import LabelStore, SchemaStore, SessionState, SessionStore
+
+
+def test_schema_store_roundtrip(tmp_path):
+    store = SchemaStore()
+    source = tmp_path / "scan.ply"
+    schema = LabelSchema(
+        classes=[LabelClass(0, "unlabeled", (0, 0, 0)), LabelClass(1, "tree", (1, 2, 3))],
+        unlabeled_id=0,
+    )
+    out = store.save(source, schema)
+    assert out == store.path_for(source)
+    assert out.name == "scan.ply.toaster.schema.yaml"
+    loaded = store.load(source)
+    assert loaded is not None
+    assert loaded.get(1).name == "tree"
+    assert loaded.get(1).color == (1, 2, 3)
+
+
+def test_schema_store_missing_returns_none(tmp_path):
+    assert SchemaStore().load(tmp_path / "absent.ply") is None
 
 
 def test_label_store_roundtrip(tmp_path):

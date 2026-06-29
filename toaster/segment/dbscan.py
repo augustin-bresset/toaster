@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from toaster.core import Grouping, PointCloud, Selection
 
-from .base import resolve_points, scatter
+from .base import all_noise, resolve_points, scatter
 
 __all__ = ["DBSCANSegmenter"]
 
@@ -30,6 +30,8 @@ class DBSCANSegmenter:
         from sklearn.cluster import DBSCAN
 
         xyz, indices = resolve_points(cloud, selection)
+        if len(xyz) < 2:  # nothing to cluster in a single point
+            return all_noise(indices, cloud.n, source=self.name)
         labels = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit_predict(xyz)
         return scatter(
             labels,

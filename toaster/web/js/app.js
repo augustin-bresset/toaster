@@ -190,8 +190,14 @@ function wire() {
   window.addEventListener("keydown", onKey);
 }
 
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
 // Make each floating window draggable by its title bar and raise it on focus.
+// Windows are position:fixed, so client coordinates map straight to left/top —
+// no offset-parent mismatch. The drag is clamped to the viewport (and below the
+// toolbar) so a window can never be lost behind the menu bar.
 function setupWindows() {
+  const minTop = () => el("loading").getBoundingClientRect().bottom + 4;
   document.querySelectorAll(".window").forEach((win) => {
     win.addEventListener("pointerdown", () => (win.style.zIndex = ++topZ));
     const bar = win.querySelector(".titlebar");
@@ -202,18 +208,21 @@ function setupWindows() {
       const r = win.getBoundingClientRect();
       dx = e.clientX - r.left;
       dy = e.clientY - r.top;
+      win.style.right = "auto"; // pin to left/top from now on
       bar.setPointerCapture(e.pointerId);
+      e.preventDefault();
     });
     bar.addEventListener("pointermove", (e) => {
       if (!dragging) return;
-      win.style.left = e.clientX - dx + "px";
-      win.style.top = e.clientY - dy + "px";
-      win.style.right = "auto";
+      win.style.left = clamp(e.clientX - dx, 0, window.innerWidth - win.offsetWidth) + "px";
+      win.style.top = clamp(e.clientY - dy, minTop(), window.innerHeight - 32) + "px";
     });
-    bar.addEventListener("pointerup", (e) => {
+    const end = (e) => {
       dragging = false;
-      bar.releasePointerCapture(e.pointerId);
-    });
+      if (bar.hasPointerCapture(e.pointerId)) bar.releasePointerCapture(e.pointerId);
+    };
+    bar.addEventListener("pointerup", end);
+    bar.addEventListener("pointercancel", end);
   });
 }
 

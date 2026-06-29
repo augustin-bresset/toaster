@@ -7,6 +7,7 @@
   --muted: #8a8a8a;
   --accent: #e10600;
   --accent-dim: #7a0300;
+  --glow: 0 0 6px rgba(225, 6, 0, 0.55), 0 0 16px rgba(225, 6, 0, 0.22);
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -18,8 +19,9 @@ body {
 
 /* -- toolbar -- */
 #toolbar {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 6px; position: relative; z-index: 100;
   padding: 6px 10px; background: #000; border-bottom: 2px solid var(--accent);
+  box-shadow: 0 2px 14px rgba(225, 6, 0, 0.35); /* heating-element glow */
 }
 .logo { display: inline-flex; align-items: center; gap: 8px; color: var(--fg); }
 .logo b { letter-spacing: 4px; font-weight: 800; font-size: 15px; }
@@ -29,10 +31,18 @@ body {
 .group { display: inline-flex; gap: 4px; }
 
 /* -- loading bar -- */
-#loading { height: 3px; background: #000; overflow: hidden; }
+#loading { height: 3px; background: #000; overflow: hidden; position: relative; z-index: 100; }
 #loading .bar { width: 28%; height: 100%; background: var(--accent); transform: translateX(-130%); }
-#loading.on .bar { animation: load 0.9s linear infinite; }
+#loading.on .bar { animation: load 0.9s linear infinite; box-shadow: 0 0 12px 2px var(--accent); }
 @keyframes load { from { transform: translateX(-130%); } to { transform: translateX(460%); } }
+
+/* Heating element: a glowing coil that breathes along the bottom edge. */
+body::after {
+  content: ""; position: fixed; left: 0; right: 0; bottom: 0; height: 2px;
+  background: var(--accent); box-shadow: 0 0 20px 3px rgba(225, 6, 0, 0.6);
+  pointer-events: none; z-index: 1; animation: ember 3s ease-in-out infinite;
+}
+@keyframes ember { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
 
 /* -- controls -- */
 button {
@@ -42,7 +52,7 @@ button {
   font: 600 11px/1.2 inherit; text-transform: uppercase; letter-spacing: 0.6px;
 }
 button:hover { border-color: var(--accent); color: var(--accent); }
-button.primary { background: var(--accent); border-color: var(--accent); color: #000; width: 100%; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #000; width: 100%; box-shadow: var(--glow); }
 button.primary:hover { background: #fff; border-color: #fff; color: #000; }
 button.toggle.active, button.active { background: var(--accent); border-color: var(--accent); color: #000; }
 select, input[type="number"] {
@@ -58,16 +68,17 @@ main { flex: 1; position: relative; min-height: 0; overflow: hidden; }
 #viewport canvas { display: block; }
 
 .window {
-  position: absolute; z-index: 5;
+  position: fixed; z-index: 5;
   display: flex; flex-direction: column;
   background: var(--panel); border: 2px solid var(--line);
-  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.7);
-  max-height: calc(100% - 28px);
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.7), 0 0 18px rgba(225, 6, 0, 0.12);
+  max-height: calc(100vh - 70px);
 }
 .titlebar {
   display: flex; align-items: center; gap: 6px;
-  padding: 6px 9px; cursor: move; user-select: none;
+  padding: 6px 9px; cursor: move; user-select: none; touch-action: none;
   background: #000; border-bottom: 2px solid var(--accent);
+  box-shadow: 0 3px 10px -3px rgba(225, 6, 0, 0.55);
   text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; font-size: 11px;
 }
 .titlebar .x {

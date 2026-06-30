@@ -122,9 +122,36 @@ def test_npy_normals_detected_by_negative_values(tmp_path):
     assert cloud.features["normals"].dtype == np.float32
 
 
+def test_npy_ouster_9col_keeps_xyz_intensity(tmp_path):
+    # An Ouster scan dumps 9 fields: x, y, z, intensity, t, reflectivity, ring,
+    # ambient, range. Keep xyz + intensity (column 3); drop the sensor metadata.
+    pts = np.arange(2 * 9, dtype=np.float32).reshape(2, 9)
+    path = tmp_path / "scan.npy"
+    np.save(path, pts)
+    cloud = load_cloud(path)
+    assert np.allclose(cloud.xyz, pts[:, :3])
+    assert np.allclose(cloud.features["intensity"], pts[:, 3])
+    assert set(cloud.features) == {"intensity"}  # trailing columns are dropped
+
+
+def test_npy_drops_nonfinite_points(tmp_path):
+    # Ouster encodes "no return" as NaN xyz; such rows are dropped, and their
+    # feature values go with them so xyz and intensity stay aligned.
+    pts = np.array(
+        [[0, 0, 0, 0.1], [np.nan, np.nan, np.nan, 0.2], [1, 2, 3, 0.3]],
+        dtype=np.float32,
+    )
+    path = tmp_path / "scan.npy"
+    np.save(path, pts)
+    cloud = load_cloud(path)
+    assert cloud.n == 2
+    assert np.allclose(cloud.xyz, [[0, 0, 0], [1, 2, 3]])
+    assert np.allclose(cloud.features["intensity"], [0.1, 0.3])
+
+
 def test_npy_bad_shape_raises(tmp_path):
     path = tmp_path / "scan.npy"
-    np.save(path, np.zeros((4, 5), dtype=np.float32))
+    np.save(path, np.zeros((4, 2), dtype=np.float32))  # fewer than 3 columns
     with pytest.raises(ValueError):
         load_cloud(path)
 

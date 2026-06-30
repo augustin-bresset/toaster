@@ -6,9 +6,13 @@ The file is one 2-D array ``(N, C)``; the column count decides the layout:
 ``C``       Interpretation
 ==========  =====================================================
 ``3``       ``x, y, z``
-``4``       ``x, y, z, intensity`` (as KITTI ``.bin`` stores it)
 ``6``       ``x, y, z`` + three channels guessed as ``rgb`` or
             ``normals`` (see :meth:`NpyLoader._guess_trailing`)
+any other   ``x, y, z, intensity`` — column 3 is read as intensity
+            (the lidar convention: KITTI ``.bin``, Ouster, most ROS
+            ``PointCloud2`` dumps). Further columns — e.g. an Ouster
+            scan's ``t, reflectivity, ring, ambient, range`` — are
+            sensor metadata the viewer does not use, and are dropped.
 ==========  =====================================================
 """
 
@@ -38,19 +42,30 @@ class NpyLoader:
                 "save a plain numeric (N, 3|4|6) array"
             )
         arr = np.atleast_2d(arr)
-        if arr.ndim != 2 or arr.shape[1] not in (3, 4, 6):
+        if arr.ndim != 2 or arr.shape[1] < 3:
             raise ValueError(
-                f"{path.name}: expected a 2-D array with 3, 4 or 6 columns "
-                f"([x,y,z] / [x,y,z,intensity] / [x,y,z,rgb|normals]), got shape {arr.shape}"
+                f"{path.name}: expected a 2-D array with at least 3 columns "
+                f"(x, y, z[, intensity, ...]), got shape {arr.shape}"
             )
+
+        # Drop invalid returns: raw lidar dumps (Ouster especially) encode a
+        # "no return" as NaN/inf xyz. Such points have no geometry — they break
+        # camera framing (a NaN bounding sphere) and can't be shown, picked or
+        # labelled — so filter them (and their feature rows) out up front.
+        finite = np.isfinite(arr[:, :3]).all(axis=1)
+        if not finite.all():
+            arr = arr[finite]
 
         xyz = arr[:, :3]
         features: dict[str, np.ndarray] = {}
-        if arr.shape[1] == 4:
-            features["intensity"] = np.ascontiguousarray(arr[:, 3], dtype=np.float32)
-        elif arr.shape[1] == 6:
+        if arr.shape[1] == 6:
+            # Exactly three trailing columns reads as colour or normals (xyzrgb).
             key, values = self._guess_trailing(arr[:, 3:])
             features[key] = values
+        elif arr.shape[1] >= 4:
+            # Column 3 is intensity by convention; trailing sensor columns (an
+            # Ouster scan's t/reflectivity/ring/ambient/range, …) are dropped.
+            features["intensity"] = np.ascontiguousarray(arr[:, 3], dtype=np.float32)
 
         return PointCloud(xyz=xyz, features=features, source=path)
 

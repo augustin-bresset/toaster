@@ -62,7 +62,7 @@ export class Viewer {
     this.points = null;
     this.highlight = null;
     this.material = new THREE.ShaderMaterial({
-      uniforms: { uSize: { value: 3.0 }, uRound: { value: 0.0 } },
+      uniforms: { uSize: { value: 2.0 }, uRound: { value: 0.0 } },
       vertexShader: VERT,
       fragmentShader: FRAG,
     });

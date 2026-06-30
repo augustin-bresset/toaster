@@ -205,6 +205,22 @@ main { flex: 1; position: relative; min-height: 0; overflow: hidden; }
 
 #theme { padding: 3px 4px; }
 
+/* -- help window -- */
+#win-help .body { gap: 2px; max-height: 74vh; }
+#win-help p { margin: 0 0 6px; }
+#win-help h4 {
+  margin: 12px 0 2px; color: var(--accent);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+}
+#win-help h4:first-of-type { margin-top: 2px; }
+#win-help ul { margin: 0; padding-left: 4px; list-style: none; }
+#win-help li { margin: 3px 0; }
+.key {
+  display: inline-block; min-width: 13px; padding: 0 5px; text-align: center;
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px;
+  background: #000; color: var(--fg); font: 11px/1.5 ui-monospace, monospace;
+}
+
 /* A toast that jumps up when a grouping is produced (Pixel Breakfast). */
 .toast-pop {
   position: fixed; left: 50%; top: 60%; font-size: 54px; transform: translateX(-50%);

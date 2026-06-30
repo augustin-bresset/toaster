@@ -87,6 +87,8 @@
       <button data-mode-pick="point" class="toggle active">Point</button>
       <button data-mode-pick="box" class="toggle">Box</button>
       <button data-mode-pick="voxel" class="toggle">Voxel</button>
+      <span class="sep"></span>
+      <button data-open="win-help" title="Help &amp; shortcuts (?)">? Help</button>
       <span class="spacer"></span>
       <span id="status">loading…</span>
       <span class="sep"></span>
@@ -139,7 +141,7 @@
       <div class="window" id="win-display" style="left: 14px; top: 446px; width: 248px">
         <div class="titlebar">Display</div>
         <div class="body">
-          <label class="row">Size <input id="psize" type="range" min="1" max="12" value="3" /></label>
+          <label class="row">Size <input id="psize" type="range" min="1" max="10" value="2" step="0.5" /></label>
           <label class="row"><input id="round" type="checkbox" /> Round points</label>
         </div>
       </div>
@@ -231,6 +233,66 @@
           </div>
           <div id="save-list" class="list" style="max-height: 300px; overflow: auto"></div>
           <button id="save-confirm" class="primary" style="margin-top: 6px">Save here</button>
+        </div>
+      </div>
+
+      <div class="window" id="win-help" style="left: 360px; top: 64px; width: 452px; display: none">
+        <div class="titlebar">
+          Help — Toaster
+          <button class="x" data-close="win-help">×</button>
+        </div>
+        <div class="body">
+          <p class="muted">Label lidar point clouds in 3D: navigate, select points, assign semantic
+          classes. Run a segmenter so one click labels a whole cluster.</p>
+
+          <h4>Select</h4>
+          <ul>
+            <li><b>Point</b> mode — click a point to select; double-click to label it.</li>
+            <li><b>Box</b> mode — left-drag a rubber band to select many; double-click inside to label.</li>
+            <li><b>Voxel</b> mode — a click selects the whole voxel.</li>
+            <li><span class="key">Shift</span> adds to the selection · <span class="key">Ctrl</span> removes from it.</li>
+          </ul>
+
+          <h4>Label</h4>
+          <ul>
+            <li><span class="key">Enter</span> assign the active class to the selection</li>
+            <li><span class="key">0</span>–<span class="key">9</span> pick that class and assign in one go</li>
+            <li><span class="key">Esc</span> clear the selection</li>
+            <li><span class="key">Ctrl</span>+<span class="key">Z</span> / <span class="key">Ctrl</span>+<span class="key">Y</span> undo / redo</li>
+          </ul>
+
+          <h4>Camera</h4>
+          <ul>
+            <li><b>Point / Voxel</b> — left-drag orbit · right-drag pan · wheel zoom</li>
+            <li><b>Box</b> — right-drag orbit · <span class="key">Shift</span>+right-drag (or middle) pan · wheel zoom</li>
+            <li><span class="key">←</span><span class="key">→</span> roll · <span class="key">↑</span><span class="key">↓</span> pitch · <span class="key">Shift</span>+<span class="key">←</span><span class="key">→</span> yaw</li>
+          </ul>
+
+          <h4>Frames — apairo dataset</h4>
+          <ul>
+            <li><span class="key">,</span> / <span class="key">.</span> previous / next frame</li>
+            <li><b>Dataset</b> window — switch sequence &amp; channel; click the counter to jump to a frame</li>
+          </ul>
+
+          <h4>Segment</h4>
+          <ul>
+            <li>Pick a segmenter, set its params, <b>Run</b> — clusters appear in the <b>Segments</b> window.</li>
+            <li>Tick segments and <b>Assign checked</b>, or double-click a cluster to label it.</li>
+            <li>Ground filters — tick <b>Use camera view as up</b> after turning the scene upright.</li>
+          </ul>
+
+          <h4>Save</h4>
+          <ul>
+            <li><b>Save</b> writes labels + a class-names YAML beside the cloud (or a folder you pick / create).</li>
+            <li>In an apairo dataset — write the labels back as a channel (<i>ground_truth</i>).</li>
+          </ul>
+
+          <h4>Display</h4>
+          <ul>
+            <li>Views — <b>labels · grouping · intensity · height</b>. Point size &amp; round points in the <b>Display</b> window.</li>
+          </ul>
+
+          <p class="muted">Open this anytime with <span class="key">?</span></p>
         </div>
       </div>
 

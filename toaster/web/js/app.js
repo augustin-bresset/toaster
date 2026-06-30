@@ -918,6 +918,12 @@ function onKey(e) {
 
   if (e.key === ",") return navStep(-1); // dataset frame step (apairo mode only)
   if (e.key === ".") return navStep(1);
+  if (e.key === "?") {
+    const w = el("win-help");
+    w.style.display = "flex";
+    w.style.zIndex = ++topZ;
+    return;
+  }
   if (!state) return; // the rest do nothing until a cloud is loaded
   if (e.key === "Enter") act("assign");
   else if (e.key === "Escape") clearSelectionIfAny();

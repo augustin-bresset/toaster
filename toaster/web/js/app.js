@@ -20,9 +20,7 @@ function clearBox() {
   el("rubber").style.display = "none";
 }
 let topZ = 10;
-let frameDir = null; // folder whose frame list is cached below
-let frameList = []; // openable frame paths in that folder, in order
-let frameIndex = -1; // index of the open cloud within frameList
+let nav = null; // apairo dataset position: { is_dataset, sequences, sequence, channels, channel, frame_index, frame_count, frame_stem }
 let dirty = false; // unsaved label changes on the current frame
 let segSpecs = {}; // segmenter name -> [{name, type, default, min, max, step}]
 let segGravity = {}; // segmenter name -> bool (accepts an "up" gravity vector)
@@ -143,71 +141,71 @@ async function boot() {
   initTheme();
   if (meta.n > 0) {
     await loadCloud();
-    await syncFrames(meta.source); // enable frame nav over the launch file's folder
+    await refreshNav(); // show the dataset menu if this cloud is in an apairo set
   } else {
     el("status").textContent = "no cloud — pick one";
     openBrowser(); // launched without a file → let the user find one in a folder
   }
 }
 
-// -- frame navigation (step through a folder's clouds without re-browsing) ----
+// -- apairo dataset navigation (sequence / channel / frame menu) --------------
 
-const FRAME_SIDECAR = "_toaster.npy"; // label sidecars are not sequence frames
-
-// Cache the openable frames of `path`'s folder and locate `path` among them.
-async function syncFrames(path) {
-  if (!path) {
-    frameList = [];
-    frameIndex = -1;
-    return updateFrameNav();
+// Pull the dataset position of the open cloud and (re)render the Dataset window.
+async function refreshNav() {
+  try {
+    nav = await api.apairoNav();
+  } catch {
+    nav = { is_dataset: false };
   }
-  const slash = path.lastIndexOf("/");
-  const dir = slash >= 0 ? path.slice(0, slash) : ".";
-  if (dir !== frameDir) {
-    try {
-      const data = await api.browse(dir);
-      frameDir = dir;
-      frameList = data.entries
-        .filter((e) => !e.is_dir && e.openable && !e.name.endsWith(FRAME_SIDECAR))
-        .map((e) => e.path);
-    } catch {
-      frameDir = null;
-      frameList = [];
-    }
-  }
-  // Match on filename: the launch path may be relative while browse() resolves
-  // to absolute, but a filename is unique within one folder.
-  const base = path.split("/").pop();
-  frameIndex = frameList.findIndex((p) => p.split("/").pop() === base);
-  updateFrameNav();
+  renderNav();
 }
 
-function updateFrameNav() {
-  const info = el("frame-info");
-  if (frameIndex < 0 || frameList.length === 0) {
-    info.textContent = "–";
-    el("frame-prev").disabled = true;
-    el("frame-next").disabled = true;
+function renderNav() {
+  const win = el("win-dataset");
+  if (!nav || !nav.is_dataset) {
+    win.style.display = "none";
     return;
   }
-  const name = frameList[frameIndex].split("/").pop();
-  info.textContent = `${name}  ${frameIndex + 1}/${frameList.length}`;
-  el("frame-prev").disabled = frameIndex <= 0;
-  el("frame-next").disabled = frameIndex >= frameList.length - 1;
+  win.style.display = "flex";
+  el("ds-name").textContent = nav.dataset_name;
+  el("ds-seq").innerHTML = nav.sequences.map((s) => `<option>${s}</option>`).join("");
+  el("ds-seq").value = nav.sequence;
+  el("ds-channel").innerHTML = nav.channels.map((c) => `<option>${c}</option>`).join("");
+  el("ds-channel").value = nav.channel;
+  el("ds-frame").textContent = `${nav.frame_stem ?? "?"}  ${nav.frame_index + 1}/${nav.frame_count}`;
+  el("ds-prev").disabled = nav.frame_index <= 0;
+  el("ds-next").disabled = nav.frame_index >= nav.frame_count - 1;
 }
 
-function gotoFrame(i) {
-  if (i >= 0 && i < frameList.length && i !== frameIndex) openFile(frameList[i]);
+// Open a specific dataset frame (server clamps the index), guarding unsaved work.
+async function navTo(sequence, channel, frameIndex) {
+  if (!nav || !nav.is_dataset) return;
+  if (dirty && !confirm("This frame has unsaved labels. Move anyway?")) return;
+  el("status").textContent = "opening…";
+  try {
+    await api.apairoOpen(sequence, channel, frameIndex);
+    currentGroup = null;
+    dirty = false;
+    clearBox();
+    await loadCloud();
+    await refreshNav();
+    if (pickMode === "voxel") rebuildVoxels();
+    el("status").textContent = `${nav.sequence} · ${nav.channel} · ${nav.frame_stem}`;
+  } catch (e) {
+    el("status").textContent = "✗ " + e.message;
+  }
 }
-const prevFrame = () => gotoFrame(frameIndex - 1);
-const nextFrame = () => gotoFrame(frameIndex + 1);
 
-function jumpFrame() {
-  if (frameList.length === 0) return;
-  const s = prompt(`Go to frame (1–${frameList.length}):`, String(frameIndex + 1));
+const navStep = (d) => {
+  if (nav && nav.is_dataset) navTo(nav.sequence, nav.channel, nav.frame_index + d);
+};
+
+function navJump() {
+  if (!nav || !nav.is_dataset) return;
+  const s = prompt(`Go to frame (1–${nav.frame_count}):`, String(nav.frame_index + 1));
   if (s === null) return;
   const i = parseInt(s, 10) - 1;
-  if (!Number.isNaN(i)) gotoFrame(i);
+  if (!Number.isNaN(i)) navTo(nav.sequence, nav.channel, i);
 }
 
 // Render the parameter fields for the selected segmenter from its spec.
@@ -366,7 +364,7 @@ async function openFile(path) {
     dirty = false;
     clearBox();
     await loadCloud();
-    await syncFrames(path);
+    await refreshNav(); // shows the dataset menu when the file is inside one
     if (pickMode === "voxel") rebuildVoxels();
     el("status").textContent = "opened " + (path.split("/").pop() || path);
   } catch (e) {
@@ -748,9 +746,11 @@ function wire() {
       el("win-open").style.display = "none";
     }
   });
-  el("frame-prev").onclick = prevFrame;
-  el("frame-next").onclick = nextFrame;
-  el("frame-info").onclick = jumpFrame;
+  el("ds-seq").onchange = () => navTo(el("ds-seq").value, nav.channel, 0);
+  el("ds-channel").onchange = () => navTo(nav.sequence, el("ds-channel").value, nav.frame_index);
+  el("ds-prev").onclick = () => navStep(-1);
+  el("ds-next").onclick = () => navStep(1);
+  el("ds-frame").onclick = navJump;
   el("save-confirm").onclick = doSave;
   el("save-mkdir").onclick = newSaveFolder;
   el("save-apairo-btn").onclick = doSaveApairo;
@@ -916,8 +916,8 @@ function onKey(e) {
     return;
   }
 
-  if (e.key === ",") return prevFrame(); // frame step works even before any label
-  if (e.key === ".") return nextFrame();
+  if (e.key === ",") return navStep(-1); // dataset frame step (apairo mode only)
+  if (e.key === ".") return navStep(1);
   if (!state) return; // the rest do nothing until a cloud is loaded
   if (e.key === "Enter") act("assign");
   else if (e.key === "Escape") clearSelectionIfAny();

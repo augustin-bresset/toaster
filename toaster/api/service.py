@@ -265,6 +265,43 @@ class AnnotationService:
             "suggested_channel": "ground_truth",
         }
 
+    def apairo_nav(self) -> dict[str, Any]:
+        """Dataset → sequence → channel → frame position of the open cloud.
+
+        ``is_dataset`` is False when the cloud isn't inside an apairo dataset, so
+        the UI can hide the navigation menu. Otherwise it carries the sequences,
+        the sequence's point channels and the current frame index/count.
+        """
+        from toaster.io.apairo_dataset import detect_apairo_nav
+
+        nav = detect_apairo_nav(self._session.cloud.source) if self._session else None
+        if nav is None:
+            return {"is_dataset": False}
+        stem = nav.frames[nav.frame_index] if 0 <= nav.frame_index < len(nav.frames) else None
+        return {
+            "is_dataset": True,
+            "dataset_name": nav.dataset_name,
+            "sequences": nav.sequences,
+            "sequence": nav.sequence,
+            "channels": nav.channels,
+            "channel": nav.channel,
+            "frame_index": nav.frame_index,
+            "frame_count": len(nav.frames),
+            "frame_stem": stem,
+        }
+
+    def apairo_open(self, sequence: str, channel: str, frame_index: int) -> dict[str, Any]:
+        """Open a specific dataset frame (``frame_index`` clamped to the channel)."""
+        from toaster.io.apairo_dataset import detect_apairo_nav, frame_path
+
+        nav = detect_apairo_nav(self._session.cloud.source) if self._session else None
+        if nav is None:
+            raise RuntimeError("the open cloud is not inside an apairo dataset")
+        path = frame_path(nav.dataset_root, sequence, channel, frame_index)
+        if path is None or not path.is_file():
+            raise RuntimeError(f"no frame {frame_index} in {sequence}/{channel}")
+        return self.open_cloud(str(path))
+
     def save_apairo(self, channel: str = "ground_truth") -> dict[str, Any]:
         """Write the labels back into the apairo dataset as ``channel``.
 

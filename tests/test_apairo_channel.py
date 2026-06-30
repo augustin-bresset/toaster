@@ -16,13 +16,20 @@ import pytest
 
 from toaster.core import PointCloud
 from toaster.io import load_cloud
-from toaster.io.apairo_dataset import detect_apairo_channel, frame_timestamp
+from toaster.io.apairo_dataset import (
+    detect_apairo_channel,
+    detect_apairo_nav,
+    frame_path,
+    frame_timestamp,
+)
 
 # -- survivor mask / realignment (pure core) --------------------------------
 
 
 def test_to_source_frame_scatters_with_fill():
-    pc = PointCloud(xyz=np.zeros((3, 3), np.float32), source_index=np.array([0, 2, 4]), source_count=5)
+    pc = PointCloud(
+        xyz=np.zeros((3, 3), np.float32), source_index=np.array([0, 2, 4]), source_count=5
+    )
     assert pc.to_source_frame(np.array([7, 8, 9]), fill=-1).tolist() == [7, -1, 8, -1, 9]
 
 
@@ -94,7 +101,7 @@ def test_frame_timestamp_uses_sorted_position(tmp_path):
 
 
 class _FakeWriter:
-    last: "_FakeWriter | None" = None
+    last: _FakeWriter | None = None
 
     def __init__(self, seq_dir, channel, **kw):
         self.seq_dir, self.channel, self.kw, self.added = seq_dir, channel, kw, []
@@ -144,7 +151,9 @@ def test_save_apairo_writes_full_frame_aligned_labels(tmp_path, fake_apairo):
     w = fake_apairo.last
     assert w.channel == "ground_truth"
     assert w.seq_dir == str(seq.resolve())
-    assert w.kw == {"loader": "npys", "timestamps_from": "ouster_points", "sources": ["ouster_points"]}
+    assert w.kw == {
+        "loader": "npys", "timestamps_from": "ouster_points", "sources": ["ouster_points"]
+    }  # fmt: skip
     arr, stem, ts = w.added[0]
     assert stem == "000001" and ts == 20.0  # timestamp from ouster_points line 2
     assert arr.shape == (6,)  # realigned to the full on-disk frame
@@ -197,6 +206,76 @@ def test_save_apairo_real_roundtrip_incremental(tmp_path):
     chans = yaml.safe_load((seq / ".apairo" / "channels.yaml").read_text())["channels"]
     assert chans["ground_truth"]["kind"] == "preprocess"
     assert chans["ground_truth"]["timestamps_from"] == "ouster_points"
+
+
+# -- dataset navigation (sequences / channels / frames) ---------------------
+
+
+def _dataset(tmp_path):
+    root = tmp_path / "ds"
+    (root / ".apairo").mkdir(parents=True)
+    (root / ".apairo" / "dataset.yaml").write_text(
+        "name: testset\nsequences:\n- seqA\n- seqB\nversion: 1\n"
+    )
+    for seq, nframes in [("seqA", 3), ("seqB", 2)]:
+        (root / seq / ".apairo").mkdir(parents=True)
+        (root / seq / ".apairo" / "channels.yaml").write_text(
+            "channels:\n  ouster_points:\n    loader: npys\n    alias: lidar\n"
+            "  zed_img:\n    loader: npys\nversion: 1\n"
+        )
+        op = root / seq / "ouster_points"
+        op.mkdir()
+        (op / "metadata.yaml").write_text("msgtype: sensor_msgs/msg/PointCloud2\n")
+        for i in range(nframes):
+            np.save(op / f"00000{i}.npy", np.zeros((4, 4), np.float32))
+        (op / "timestamps.txt").write_text("".join(f"{10.0 + i}\n" for i in range(nframes)))
+        zed = root / seq / "zed_img"  # same loader (npys) but an image -> excluded
+        zed.mkdir()
+        (zed / "metadata.yaml").write_text("msgtype: sensor_msgs/msg/Image\n")
+        np.save(zed / "000000.npy", np.zeros((2, 2, 3), np.float32))
+    return root
+
+
+def test_detect_apairo_nav(tmp_path):
+    root = _dataset(tmp_path)
+    nav = detect_apairo_nav(root / "seqA" / "ouster_points" / "000001.npy")
+    assert nav is not None
+    assert nav.dataset_name == "testset"
+    assert nav.sequences == ["seqA", "seqB"]
+    assert nav.sequence == "seqA"
+    assert nav.channels == ["ouster_points"]  # zed_img (Image msgtype) excluded
+    assert nav.channel == "ouster_points"
+    assert nav.frame_index == 1 and len(nav.frames) == 3
+
+
+def test_frame_path_clamps_to_range(tmp_path):
+    root = _dataset(tmp_path)
+    assert frame_path(root, "seqB", "ouster_points", 0).name == "000000.npy"
+    assert frame_path(root, "seqB", "ouster_points", 99).name == "000001.npy"  # clamped
+
+
+def test_apairo_open_navigates_across_sequences(tmp_path):
+    from toaster.api.service import AnnotationService
+
+    root = _dataset(tmp_path)
+    svc = AnnotationService()
+    svc.open_cloud(str(root / "seqA" / "ouster_points" / "000000.npy"))
+    nav = svc.apairo_nav()
+    assert nav["is_dataset"] and nav["sequence"] == "seqA" and nav["frame_count"] == 3
+
+    svc.apairo_open("seqB", "ouster_points", 1)  # jump to another sequence
+    nav2 = svc.apairo_nav()
+    assert nav2["sequence"] == "seqB" and nav2["frame_index"] == 1 and nav2["frame_count"] == 2
+
+
+def test_apairo_nav_false_outside_dataset(tmp_path):
+    from toaster.api.service import AnnotationService
+
+    path = tmp_path / "loose.npy"
+    np.save(path, np.zeros((4, 4), np.float32))
+    svc = AnnotationService()
+    svc.open_cloud(str(path))
+    assert svc.apairo_nav()["is_dataset"] is False
 
 
 def test_apairo_info_false_for_loose_cloud(tmp_path):

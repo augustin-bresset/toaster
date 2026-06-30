@@ -103,6 +103,12 @@ class ApairoBody(BaseModel):
     channel: str = "ground_truth"  # name of the apairo channel to write
 
 
+class ApairoOpenBody(BaseModel):
+    sequence: str
+    channel: str
+    frame_index: int
+
+
 def create_app(schema: LabelSchema | None = None) -> FastAPI:
     """Build the FastAPI app around a single :class:`AnnotationService`."""
     app = FastAPI(title="Toaster", version="0.1.0")
@@ -183,6 +189,14 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     @app.get("/api/apairo_info")
     def apairo_info():
         return service.apairo_info()
+
+    @app.get("/api/apairo_nav")
+    def apairo_nav():
+        return service.apairo_nav()
+
+    @app.post("/api/apairo_open")
+    def apairo_open(body: ApairoOpenBody):
+        return service.apairo_open(body.sequence, body.channel, body.frame_index)
 
     @app.post("/api/save_apairo")
     def save_apairo(body: ApairoBody):

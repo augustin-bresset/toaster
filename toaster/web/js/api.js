@@ -52,6 +52,9 @@ export const api = {
   clearSelection: () => jpost("/api/clear_selection"),
   save: (path = null) => jpost("/api/save", { path }),
   apairoInfo: () => jget("/api/apairo_info"),
+  apairoNav: () => jget("/api/apairo_nav"),
+  apairoOpen: (sequence, channel, frame_index) =>
+    jpost("/api/apairo_open", { sequence, channel, frame_index }),
   saveApairo: (channel) => jpost("/api/save_apairo", { channel }),
   segment: (name, params, scope_to_selection) =>
     jpost("/api/segment", { name, params, scope_to_selection }),

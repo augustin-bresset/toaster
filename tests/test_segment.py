@@ -88,6 +88,59 @@ def test_ground_detection_splits_and_suggests(name, ground_scene):
     assert (grouping.group_id[300:] == 1).all()  # the raised box is non-ground
 
 
+def _tilt(xyz, deg):
+    """Rotate a scene about X so gravity no longer points along +Z; return (xyz, up)."""
+    a = np.radians(deg)
+    rot = np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
+    up = rot @ np.array([0.0, 0.0, 1.0])
+    return (xyz @ rot.T).astype(np.float32), up.tolist()
+
+
+@pytest.mark.parametrize("name", ["ground_grid", "csf"])
+def test_z_based_ground_filters_honour_up_on_tilted_scene(name, ground_scene):
+    # ground_grid and CSF both key off Z; on a tipped scene the given up vector
+    # lets them recover the ground a naive +Z assumption would miss.
+    tilted, up = _tilt(ground_scene.xyz, 40.0)
+    cloud = PointCloud(tilted)
+    aware = get_segmenter(name, up=up).segment(cloud)
+    assert (aware.group_id[:300] == 0).mean() > 0.9  # ground recovered
+    assert (aware.group_id[300:] == 1).mean() > 0.7  # obstacle kept separate
+
+
+def test_ground_grid_without_up_misreads_tilted_scene(ground_scene):
+    tilted, _ = _tilt(ground_scene.xyz, 40.0)
+    naive = get_segmenter("ground_grid").segment(PointCloud(tilted))  # assumes cloud +Z
+    assert (naive.group_id[:300] == 0).mean() < 0.9  # the slope confuses Z-binning
+
+
+def test_ransac_with_up_locks_onto_ground_not_largest_plane():
+    # A small horizontal ground and a *bigger* vertical wall. Plain RANSAC takes
+    # the wall (more inliers); with an up hint it must keep the horizontal ground.
+    rng = np.random.default_rng(0)
+    ground = np.c_[rng.uniform(-5, 5, 300), rng.uniform(-5, 5, 300), np.zeros(300)]
+    wall = np.c_[np.full(700, 4.0), rng.uniform(-5, 5, 700), rng.uniform(0, 5, 700)]
+    cloud = PointCloud(np.vstack([ground, wall]).astype(np.float32))
+    is_ground = np.r_[np.ones(300, bool), np.zeros(700, bool)]
+
+    res = get_segmenter("ransac_ground", threshold=0.1, iterations=400, up=[0, 0, 1]).segment(cloud)
+    pred = res.group_id == 0
+    assert pred[is_ground].mean() > 0.9  # the horizontal ground is found
+    assert pred[~is_ground].mean() < 0.1  # the bigger vertical wall is not "ground"
+
+
+def test_segmenter_specs_flag_gravity_for_ground_filters():
+    gravity = {s["name"]: s["gravity"] for s in segmenter_specs()}
+    assert gravity["ransac_ground"] and gravity["ground_grid"] and gravity["csf"]
+    assert not gravity["dbscan"] and not gravity["kmeans"]
+
+
+def test_bad_up_vector_is_rejected():
+    with pytest.raises(ValueError):
+        get_segmenter("ground_grid", up=[0, 0, 0])  # zero vector has no direction
+    with pytest.raises(ValueError):
+        get_segmenter("ransac_ground", up=[1, 2])  # not a 3-vector
+
+
 def test_model_segmenter_attaches_suggested_labels(two_clusters):
     seg = ModelSegmenter(lambda xyz: np.where(xyz[:, 0] > 5, 2, 1), name="fake_nn")
     grouping = seg.segment(two_clusters)

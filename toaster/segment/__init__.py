@@ -121,9 +121,17 @@ def available_segmenters() -> list[str]:
 
 
 def segmenter_specs() -> list[dict]:
-    """Each registered segmenter as ``{name, params: [...]}`` for a front-end."""
+    """Each registered segmenter as ``{name, params: [...], gravity: bool}`` for a front-end.
+
+    ``gravity`` flags ground filters that accept an ``up`` vector, so the UI can
+    offer "use the camera's up as gravity" only where it means something.
+    """
     return [
-        {"name": name, "params": [asdict(p) for p in params_of(SEGMENTERS[name])]}
+        {
+            "name": name,
+            "params": [asdict(p) for p in params_of(SEGMENTERS[name])],
+            "gravity": bool(getattr(SEGMENTERS[name], "USES_GRAVITY", False)),
+        }
         for name in available_segmenters()
     ]
 

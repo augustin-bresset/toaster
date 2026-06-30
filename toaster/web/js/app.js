@@ -20,6 +20,10 @@ function clearBox() {
   el("rubber").style.display = "none";
 }
 let topZ = 10;
+let frameDir = null; // folder whose frame list is cached below
+let frameList = []; // openable frame paths in that folder, in order
+let frameIndex = -1; // index of the open cloud within frameList
+let dirty = false; // unsaved label changes on the current frame
 let segSpecs = {}; // segmenter name -> [{name, type, default, min, max, step}]
 let segGravity = {}; // segmenter name -> bool (accepts an "up" gravity vector)
 let voxel = { size: 0.5, showEmpty: false, map: null, centers: new Float32Array(0) };
@@ -137,11 +141,73 @@ async function boot() {
   buildModes();
   wire();
   initTheme();
-  if (meta.n > 0) await loadCloud();
-  else {
+  if (meta.n > 0) {
+    await loadCloud();
+    await syncFrames(meta.source); // enable frame nav over the launch file's folder
+  } else {
     el("status").textContent = "no cloud — pick one";
     openBrowser(); // launched without a file → let the user find one in a folder
   }
+}
+
+// -- frame navigation (step through a folder's clouds without re-browsing) ----
+
+const FRAME_SIDECAR = "_toaster.npy"; // label sidecars are not sequence frames
+
+// Cache the openable frames of `path`'s folder and locate `path` among them.
+async function syncFrames(path) {
+  if (!path) {
+    frameList = [];
+    frameIndex = -1;
+    return updateFrameNav();
+  }
+  const slash = path.lastIndexOf("/");
+  const dir = slash >= 0 ? path.slice(0, slash) : ".";
+  if (dir !== frameDir) {
+    try {
+      const data = await api.browse(dir);
+      frameDir = dir;
+      frameList = data.entries
+        .filter((e) => !e.is_dir && e.openable && !e.name.endsWith(FRAME_SIDECAR))
+        .map((e) => e.path);
+    } catch {
+      frameDir = null;
+      frameList = [];
+    }
+  }
+  // Match on filename: the launch path may be relative while browse() resolves
+  // to absolute, but a filename is unique within one folder.
+  const base = path.split("/").pop();
+  frameIndex = frameList.findIndex((p) => p.split("/").pop() === base);
+  updateFrameNav();
+}
+
+function updateFrameNav() {
+  const info = el("frame-info");
+  if (frameIndex < 0 || frameList.length === 0) {
+    info.textContent = "–";
+    el("frame-prev").disabled = true;
+    el("frame-next").disabled = true;
+    return;
+  }
+  const name = frameList[frameIndex].split("/").pop();
+  info.textContent = `${name}  ${frameIndex + 1}/${frameList.length}`;
+  el("frame-prev").disabled = frameIndex <= 0;
+  el("frame-next").disabled = frameIndex >= frameList.length - 1;
+}
+
+function gotoFrame(i) {
+  if (i >= 0 && i < frameList.length && i !== frameIndex) openFile(frameList[i]);
+}
+const prevFrame = () => gotoFrame(frameIndex - 1);
+const nextFrame = () => gotoFrame(frameIndex + 1);
+
+function jumpFrame() {
+  if (frameList.length === 0) return;
+  const s = prompt(`Go to frame (1–${frameList.length}):`, String(frameIndex + 1));
+  if (s === null) return;
+  const i = parseInt(s, 10) - 1;
+  if (!Number.isNaN(i)) gotoFrame(i);
 }
 
 // Render the parameter fields for the selected segmenter from its spec.
@@ -287,14 +353,19 @@ function browseRow(label, onClick) {
 }
 
 async function openFile(path) {
+  // Switching clouds discards the current frame's in-memory labels; warn if any
+  // are unsaved (sidecar or apairo channel). First open (dirty=false) is silent.
+  if (dirty && !confirm("This frame has unsaved labels. Open another anyway?")) return;
   el("status").textContent = "opening…";
   try {
     await api.open(path); // starts a fresh server-side session
     el("win-open").style.display = "none";
     el("win-groups").style.display = "none";
     currentGroup = null;
+    dirty = false;
     clearBox();
     await loadCloud();
+    await syncFrames(path);
     if (pickMode === "voxel") rebuildVoxels();
     el("status").textContent = "opened " + (path.split("/").pop() || path);
   } catch (e) {
@@ -380,6 +451,7 @@ async function doSaveApairo() {
   try {
     const r = await api.saveApairo(channel);
     el("win-save").style.display = "none";
+    dirty = false; // persisted to the dataset
     el("status").textContent = `wrote apairo channel '${r.channel}' → ${r.written.split("/").pop()}`;
     dingPop();
   } catch (e) {
@@ -404,6 +476,7 @@ async function doSave() {
   try {
     const r = await api.save(joinPath(saveDir, name));
     el("win-save").style.display = "none";
+    dirty = false; // persisted to sidecars
     el("status").textContent = "saved → " + r.saved.split("/").pop();
     dingPop(); // café "Ding!"
   } catch (e) {
@@ -674,6 +747,9 @@ function wire() {
       el("win-open").style.display = "none";
     }
   });
+  el("frame-prev").onclick = prevFrame;
+  el("frame-next").onclick = nextFrame;
+  el("frame-info").onclick = jumpFrame;
   el("save-confirm").onclick = doSave;
   el("save-mkdir").onclick = newSaveFolder;
   el("save-apairo-btn").onclick = doSaveApairo;
@@ -691,6 +767,7 @@ function wire() {
   el("grp-assign").onclick = () =>
     api.groupsAssignVisible().then((s) => {
       applyState(s);
+      dirty = true;
       buzz("flicker");
     });
   // Closing the Segments window discards the (transient) segmentation entirely.
@@ -803,12 +880,17 @@ async function act(name) {
     const n = state ? state.selection.length : 0;
     applyState(await api.assign());
     if (n > 0) {
+      dirty = true; // labels changed — guard against losing them on frame switch
       buzz("flicker"); // the neon stutters each time you stamp a label
       scorePop(n * 10); // arcade score (no-op in other themes)
     }
-  } else if (name === "undo") applyState(await api.undo());
-  else if (name === "redo") applyState(await api.redo());
-  else if (name === "save") openSaveDialog(); // pick where it lands, then doSave()
+  } else if (name === "undo") {
+    applyState(await api.undo());
+    dirty = true;
+  } else if (name === "redo") {
+    applyState(await api.redo());
+    dirty = true;
+  } else if (name === "save") openSaveDialog(); // pick where it lands, then doSave()
 }
 
 // Clear the current selection (no-op / no round-trip if nothing is selected).
@@ -833,7 +915,9 @@ function onKey(e) {
     return;
   }
 
-  if (!state) return; // shortcuts do nothing until a cloud is loaded
+  if (e.key === ",") return prevFrame(); // frame step works even before any label
+  if (e.key === ".") return nextFrame();
+  if (!state) return; // the rest do nothing until a cloud is loaded
   if (e.key === "Enter") act("assign");
   else if (e.key === "Escape") clearSelectionIfAny();
   else if (e.ctrlKey && e.key === "z") act("undo");

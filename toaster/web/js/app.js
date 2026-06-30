@@ -302,6 +302,61 @@ async function openFile(path) {
   }
 }
 
+// -- save dialog (choose where the annotation lands, default beside the cloud) --
+
+let saveDir = null; // folder currently shown in the save dialog
+
+async function openSaveDialog() {
+  const meta = await api.meta();
+  if (!meta.source) {
+    el("status").textContent = "open a cloud first";
+    return;
+  }
+  // Pre-fill with the cloud's own path so the sidecars land beside it — the one
+  // spot reopening the cloud looks. Navigate elsewhere only if you mean to.
+  const full = meta.source;
+  const slash = full.lastIndexOf("/");
+  el("save-name").value = slash >= 0 ? full.slice(slash + 1) : full;
+  await renderSaveDir(slash >= 0 ? full.slice(0, slash) : ".");
+  const w = el("win-save");
+  w.style.display = "flex";
+  w.style.zIndex = ++topZ;
+  el("save-name").focus();
+  el("save-name").select();
+}
+
+async function renderSaveDir(dir) {
+  let data;
+  try {
+    data = await api.browse(dir);
+  } catch (e) {
+    el("status").textContent = "✗ " + e.message;
+    return;
+  }
+  saveDir = data.path;
+  el("save-dir").textContent = data.path;
+  const list = el("save-list");
+  list.innerHTML = "";
+  if (data.parent) list.appendChild(browseRow("../", () => renderSaveDir(data.parent)));
+  for (const e of data.entries) {
+    if (e.is_dir) list.appendChild(browseRow(e.name + "/", () => renderSaveDir(e.path)));
+    else list.appendChild(browseRow(e.name, () => (el("save-name").value = e.name)));
+  }
+}
+
+async function doSave() {
+  const name = el("save-name").value.trim();
+  if (!name || !saveDir) return;
+  try {
+    const r = await api.save(joinPath(saveDir, name));
+    el("win-save").style.display = "none";
+    el("status").textContent = "saved → " + r.saved.split("/").pop();
+    dingPop(); // café "Ding!"
+  } catch (e) {
+    el("status").textContent = "✗ save failed: " + e.message;
+  }
+}
+
 function applyState(raw) {
   state = {
     snapshot: raw.snapshot,
@@ -565,6 +620,15 @@ function wire() {
       el("win-open").style.display = "none";
     }
   });
+  el("save-confirm").onclick = doSave;
+  el("save-name").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      doSave();
+    } else if (e.key === "Escape") {
+      el("win-save").style.display = "none";
+    }
+  });
   el("grp-showall").onclick = () => api.groupsShowAll().then(applyState);
   el("grp-hideall").onclick = () => api.groupsHideAll().then(applyState);
   // Assign the active class to every checked (visible) segment at once.
@@ -688,11 +752,7 @@ async function act(name) {
     }
   } else if (name === "undo") applyState(await api.undo());
   else if (name === "redo") applyState(await api.redo());
-  else if (name === "save") {
-    const r = await api.save();
-    el("status").textContent = "saved " + r.saved.split("/").pop();
-    dingPop(); // café "Ding!"
-  }
+  else if (name === "save") openSaveDialog(); // pick where it lands, then doSave()
 }
 
 // Clear the current selection (no-op / no round-trip if nothing is selected).

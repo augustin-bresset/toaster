@@ -49,7 +49,7 @@ export const api = {
   undo: () => jpost("/api/undo"),
   redo: () => jpost("/api/redo"),
   clearSelection: () => jpost("/api/clear_selection"),
-  save: () => jpost("/api/save"),
+  save: (path = null) => jpost("/api/save", { path }),
   segment: (name, params, scope_to_selection) =>
     jpost("/api/segment", { name, params, scope_to_selection }),
   groupSelect: (group_id, modifiers = []) =>

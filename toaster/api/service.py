@@ -18,7 +18,7 @@ from toaster.builtin_schemas import builtin_schema
 from toaster.core import LabelSchema, Session
 from toaster.interaction import InteractionController
 from toaster.io import load_cloud
-from toaster.persistence import LabelStore
+from toaster.persistence import LabelStore, SchemaStore
 from toaster.segment import get_segmenter, segmenter_specs
 from toaster.viewer import NullViewer
 
@@ -33,24 +33,35 @@ class AnnotationService:
     def __init__(self, schema: LabelSchema | None = None) -> None:
         self.schema = schema or builtin_schema()
         self.label_store = LabelStore()
+        self.schema_store = SchemaStore()
         self._session: Session | None = None
         self._controller: InteractionController | None = None
 
     # -- lifecycle --------------------------------------------------------
 
     def open_cloud(self, path: str | Path) -> dict[str, Any]:
-        """Load a cloud (restoring saved labels) and start a session."""
+        """Load a cloud and start a session, restoring any saved labels and schema.
+
+        A cloud that has been labelled before carries two sidecars beside it:
+        ``<cloud>.toaster.npy`` (the labels) and ``<cloud>.toaster.schema.yaml``
+        (the class names/colours). Both are restored so reopening the cloud
+        continues exactly where it was left, with the right palette.
+        """
         cloud = load_cloud(path)
+        schema = self.schema
         if cloud.source is not None:
+            stored_schema = self.schema_store.load(cloud.source)
+            if stored_schema is not None:
+                schema = stored_schema
             stored = self.label_store.load(cloud.source)
             if stored is not None and stored.shape == (cloud.n,):
                 cloud.labels = stored
-        cloud.ensure_labels(self.schema.unlabeled_id)
-        self._session = Session(cloud, self.schema)
+        cloud.ensure_labels(schema.unlabeled_id)
+        self._session = Session(cloud, schema)
         self._controller = InteractionController(self._session, NullViewer())
         # Adopt the first real class as the active brush (skip 'unlabeled').
-        for c in self.schema.classes:
-            if c.id != self.schema.unlabeled_id:
+        for c in schema.classes:
+            if c.id != schema.unlabeled_id:
                 self._controller.set_active_class(c.id)
                 break
         return self.meta()
@@ -213,12 +224,23 @@ class AnnotationService:
         self._ctl().remove_class(class_id)
         return self.state()
 
-    def save(self) -> dict[str, Any]:
-        cloud = self._ctl().session.cloud
-        if cloud.source is None:
-            raise RuntimeError("cloud has no source path to save beside")
-        out = self.label_store.save(cloud.source, cloud.labels)
-        return {"saved": str(out)}
+    def save(self, path: str | Path | None = None) -> dict[str, Any]:
+        """Write the labels and the schema sidecars.
+
+        With ``path`` given they are written beside that base path
+        (``<path>.toaster.npy`` and ``<path>.toaster.schema.yaml``); otherwise
+        they go beside the cloud's own source. Reopening a cloud only finds the
+        sidecars that sit beside it, so the default keeps reopening seamless.
+        """
+        session = self._ctl().session
+        cloud = session.cloud
+        base = Path(path) if path is not None else cloud.source
+        if base is None:
+            raise RuntimeError("no save path given and the cloud has no source path")
+        labels = cloud.ensure_labels(session.schema.unlabeled_id)
+        labels_out = self.label_store.save(base, labels)
+        schema_out = self.schema_store.save(base, session.schema)
+        return {"saved": str(labels_out), "schema": str(schema_out)}
 
 
 def _mods(modifiers: list[str] | None) -> frozenset:

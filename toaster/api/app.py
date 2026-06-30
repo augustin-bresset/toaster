@@ -91,6 +91,10 @@ class RemoveClassBody(BaseModel):
     class_id: int
 
 
+class SaveBody(BaseModel):
+    path: str | None = None  # base path to save beside; None = beside the cloud
+
+
 def create_app(schema: LabelSchema | None = None) -> FastAPI:
     """Build the FastAPI app around a single :class:`AnnotationService`."""
     app = FastAPI(title="Toaster", version="0.1.0")
@@ -161,8 +165,8 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
         return service.clear_selection()
 
     @app.post("/api/save")
-    def save():
-        return service.save()
+    def save(body: SaveBody):
+        return service.save(body.path)
 
     # -- segmentation / groups --
     @app.post("/api/segment")

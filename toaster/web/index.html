@@ -194,6 +194,14 @@
           <button class="x" data-close="win-save">×</button>
         </div>
         <div class="body">
+          <div id="save-apairo" style="display: none; margin-bottom: 8px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 4px">
+            <div style="margin-bottom: 4px">📦 apairo dataset detected — write labels back as a channel</div>
+            <label class="row">channel
+              <input id="save-apairo-channel" type="text" spellcheck="false" value="ground_truth" style="flex: 1" />
+            </label>
+            <div id="save-apairo-hint" class="muted" style="margin: 2px 0 4px"></div>
+            <button id="save-apairo-btn" class="primary">Write apairo channel</button>
+          </div>
           <div class="muted" style="margin-bottom: 4px">Folder: <span id="save-dir"></span></div>
           <input id="save-name" type="text" spellcheck="false" autocomplete="off"
                  placeholder="base filename" style="width: 100%; margin-bottom: 4px" />

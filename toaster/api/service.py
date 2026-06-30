@@ -8,6 +8,7 @@ exact same engine the Qt app uses — only the front differs.
 
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -241,6 +242,54 @@ class AnnotationService:
         labels_out = self.label_store.save(base, labels)
         schema_out = self.schema_store.save(base, session.schema, cloud_path=cloud.source)
         return {"saved": str(labels_out), "schema": str(schema_out)}
+
+    def apairo_info(self) -> dict[str, Any]:
+        """Tell the UI whether the open cloud can be written back as an apairo channel.
+
+        Detection is filesystem-only (no ``apairo`` import), so the option can be
+        *offered* even when the package is missing; ``apairo_installed`` flags
+        whether the write itself is currently possible.
+        """
+        from toaster.io.apairo_dataset import detect_apairo_channel
+
+        installed = importlib.util.find_spec("apairo") is not None
+        target = detect_apairo_channel(self._session.cloud.source) if self._session else None
+        if target is None:
+            return {"is_apairo": False, "apairo_installed": installed}
+        return {
+            "is_apairo": True,
+            "apairo_installed": installed,
+            "seq_dir": target.seq_dir,
+            "source_channel": target.source_channel,
+            "stem": target.stem,
+            "suggested_channel": "ground_truth",
+        }
+
+    def save_apairo(self, channel: str = "ground_truth") -> dict[str, Any]:
+        """Write the labels back into the apairo dataset as ``channel``.
+
+        Labels are realigned to the source frame (dropped NaN points become
+        ``unlabeled``) so the channel lines up index-for-index with the cloud it
+        was derived from, the same convention apairo's own preprocess channels use.
+        """
+        from toaster.io.apairo_dataset import (
+            detect_apairo_channel,
+            frame_timestamp,
+            write_labels_channel,
+        )
+
+        session = self._ctl().session
+        cloud = session.cloud
+        target = detect_apairo_channel(cloud.source)
+        if target is None:
+            raise RuntimeError("this cloud is not inside an apairo dataset")
+        timestamp = frame_timestamp(target.seq_dir, target.source_channel, target.stem)
+        if timestamp is None:
+            raise RuntimeError(f"no timestamp found for frame {target.stem}")
+        labels = cloud.ensure_labels(session.schema.unlabeled_id)
+        full = cloud.to_source_frame(labels, fill=session.schema.unlabeled_id)
+        out = write_labels_channel(target, full, timestamp, channel=channel)
+        return {"written": str(out), "channel": channel, "points": int(full.size)}
 
     def make_dir(self, path: str | Path) -> dict[str, Any]:
         """Create a folder (the Save dialog's "New folder"). Local use only.

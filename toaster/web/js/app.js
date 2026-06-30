@@ -321,6 +321,7 @@ async function openSaveDialog() {
   if (dot > 0) nm = nm.slice(0, dot);
   el("save-name").value = nm;
   await renderSaveDir(slash >= 0 ? full.slice(0, slash) : ".");
+  await refreshApairoBlock();
   const w = el("win-save");
   w.style.display = "flex";
   w.style.zIndex = ++topZ;
@@ -344,6 +345,45 @@ async function renderSaveDir(dir) {
   for (const e of data.entries) {
     if (e.is_dir) list.appendChild(browseRow(e.name + "/", () => renderSaveDir(e.path)));
     else list.appendChild(browseRow(e.name, () => (el("save-name").value = e.name)));
+  }
+}
+
+// Show the "write to apairo dataset" proposal when the open cloud lives in one.
+async function refreshApairoBlock() {
+  const box = el("save-apairo");
+  let info;
+  try {
+    info = await api.apairoInfo();
+  } catch {
+    box.style.display = "none";
+    return;
+  }
+  if (!info.is_apairo) {
+    box.style.display = "none";
+    return;
+  }
+  box.style.display = "block";
+  el("save-apairo-channel").value = info.suggested_channel || "ground_truth";
+  const hint = el("save-apairo-hint");
+  const btn = el("save-apairo-btn");
+  if (info.apairo_installed) {
+    hint.textContent = `${info.source_channel} → frame ${info.stem}, aligned to the full lidar frame`;
+    btn.disabled = false;
+  } else {
+    hint.textContent = "needs the apairo package — pip install apairo";
+    btn.disabled = true;
+  }
+}
+
+async function doSaveApairo() {
+  const channel = el("save-apairo-channel").value.trim() || "ground_truth";
+  try {
+    const r = await api.saveApairo(channel);
+    el("win-save").style.display = "none";
+    el("status").textContent = `wrote apairo channel '${r.channel}' → ${r.written.split("/").pop()}`;
+    dingPop();
+  } catch (e) {
+    el("status").textContent = "✗ apairo write failed: " + e.message;
   }
 }
 
@@ -636,6 +676,7 @@ function wire() {
   });
   el("save-confirm").onclick = doSave;
   el("save-mkdir").onclick = newSaveFolder;
+  el("save-apairo-btn").onclick = doSaveApairo;
   el("save-name").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();

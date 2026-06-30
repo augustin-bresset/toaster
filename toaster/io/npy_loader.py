@@ -51,9 +51,15 @@ class NpyLoader:
         # Drop invalid returns: raw lidar dumps (Ouster especially) encode a
         # "no return" as NaN/inf xyz. Such points have no geometry — they break
         # camera framing (a NaN bounding sphere) and can't be shown, picked or
-        # labelled — so filter them (and their feature rows) out up front.
+        # labelled — so filter them (and their feature rows) out up front. We keep
+        # the survivor mask so derived arrays (labels) can be realigned to the
+        # full on-disk frame later (see PointCloud.to_source_frame).
         finite = np.isfinite(arr[:, :3]).all(axis=1)
+        source_index: np.ndarray | None = None
+        source_count: int | None = None
         if not finite.all():
+            source_count = int(len(arr))
+            source_index = np.flatnonzero(finite)
             arr = arr[finite]
 
         xyz = arr[:, :3]
@@ -67,7 +73,10 @@ class NpyLoader:
             # Ouster scan's t/reflectivity/ring/ambient/range, …) are dropped.
             features["intensity"] = np.ascontiguousarray(arr[:, 3], dtype=np.float32)
 
-        return PointCloud(xyz=xyz, features=features, source=path)
+        return PointCloud(
+            xyz=xyz, features=features, source=path,
+            source_index=source_index, source_count=source_count,
+        )  # fmt: skip
 
     @staticmethod
     def _guess_trailing(trailing: np.ndarray) -> tuple[str, np.ndarray]:

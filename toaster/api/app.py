@@ -99,6 +99,10 @@ class MkdirBody(BaseModel):
     path: str  # full path of the folder to create
 
 
+class ApairoBody(BaseModel):
+    channel: str = "ground_truth"  # name of the apairo channel to write
+
+
 def create_app(schema: LabelSchema | None = None) -> FastAPI:
     """Build the FastAPI app around a single :class:`AnnotationService`."""
     app = FastAPI(title="Toaster", version="0.1.0")
@@ -175,6 +179,14 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     @app.post("/api/save")
     def save(body: SaveBody):
         return service.save(body.path)
+
+    @app.get("/api/apairo_info")
+    def apairo_info():
+        return service.apairo_info()
+
+    @app.post("/api/save_apairo")
+    def save_apairo(body: ApairoBody):
+        return service.save_apairo(body.channel)
 
     # -- segmentation / groups --
     @app.post("/api/segment")

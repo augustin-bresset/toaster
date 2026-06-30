@@ -51,6 +51,8 @@ export const api = {
   redo: () => jpost("/api/redo"),
   clearSelection: () => jpost("/api/clear_selection"),
   save: (path = null) => jpost("/api/save", { path }),
+  apairoInfo: () => jget("/api/apairo_info"),
+  saveApairo: (channel) => jpost("/api/save_apairo", { channel }),
   segment: (name, params, scope_to_selection) =>
     jpost("/api/segment", { name, params, scope_to_selection }),
   groupSelect: (group_id, modifiers = []) =>

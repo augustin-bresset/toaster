@@ -29,6 +29,11 @@ class PointCloud:
             being produced. Allocated lazily by :meth:`ensure_labels` if ``None``.
         source: Path the cloud was loaded from, used as the identity key when
             saving/loading the label sidecar. ``None`` for synthetic clouds.
+        source_index: ``(N,)`` original-frame row index of each kept point, set
+            when a loader drops points (e.g. NaN lidar returns) so the cloud is a
+            subset of the on-disk frame. ``None`` means the cloud *is* the whole
+            frame. Used by :meth:`to_source_frame` to realign derived arrays.
+        source_count: Size of the original on-disk frame before any filtering.
 
     Example:
         >>> import numpy as np
@@ -43,6 +48,8 @@ class PointCloud:
     features: dict[str, np.ndarray] = field(default_factory=dict)
     labels: np.ndarray | None = None
     source: Path | None = None
+    source_index: np.ndarray | None = None
+    source_count: int | None = None
 
     def __post_init__(self) -> None:
         self.xyz = np.ascontiguousarray(self.xyz, dtype=np.float32)
@@ -52,6 +59,28 @@ class PointCloud:
             self.labels = self._coerce_labels(self.labels)
         if self.source is not None:
             self.source = Path(self.source)
+        if self.source_index is not None:
+            self.source_index = np.ascontiguousarray(self.source_index, dtype=np.int64)
+            if self.source_index.shape != (self.n,):
+                raise ValueError(
+                    f"source_index must have shape ({self.n},), got {self.source_index.shape}"
+                )
+
+    def to_source_frame(self, values: np.ndarray, fill: int = 0) -> np.ndarray:
+        """Scatter per-point ``values`` back onto the original on-disk frame.
+
+        When points were dropped at load (e.g. NaN lidar returns) the cloud is a
+        subset of the file's frame. This places ``values`` at their original rows
+        and fills the dropped rows with ``fill``, so a derived array (labels)
+        lines up index-for-index with the source frame again. A no-op (returns
+        ``values`` unchanged) when nothing was dropped.
+        """
+        values = np.asarray(values)
+        if self.source_index is None or self.source_count is None:
+            return values
+        full = np.full(self.source_count, fill, dtype=values.dtype)
+        full[self.source_index] = values
+        return full
 
     @property
     def n(self) -> int:

@@ -95,6 +95,10 @@ class SaveBody(BaseModel):
     path: str | None = None  # base path to save beside; None = beside the cloud
 
 
+class MkdirBody(BaseModel):
+    path: str  # full path of the folder to create
+
+
 def create_app(schema: LabelSchema | None = None) -> FastAPI:
     """Build the FastAPI app around a single :class:`AnnotationService`."""
     app = FastAPI(title="Toaster", version="0.1.0")
@@ -126,6 +130,10 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     @app.get("/api/browse")
     def browse(path: str | None = None):
         return service.browse(path)
+
+    @app.post("/api/mkdir")
+    def mkdir(body: MkdirBody):
+        return service.make_dir(body.path)
 
     # -- lifecycle / selection / annotation --
     @app.post("/api/open")

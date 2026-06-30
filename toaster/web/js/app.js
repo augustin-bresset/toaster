@@ -344,6 +344,17 @@ async function renderSaveDir(dir) {
   }
 }
 
+async function newSaveFolder() {
+  const name = prompt("New folder name:");
+  if (!name || !name.trim() || !saveDir) return;
+  try {
+    const r = await api.mkdir(joinPath(saveDir, name.trim()));
+    await renderSaveDir(r.path); // navigate into the folder we just created
+  } catch (e) {
+    el("status").textContent = "✗ " + e.message;
+  }
+}
+
 async function doSave() {
   const name = el("save-name").value.trim();
   if (!name || !saveDir) return;
@@ -621,6 +632,7 @@ function wire() {
     }
   });
   el("save-confirm").onclick = doSave;
+  el("save-mkdir").onclick = newSaveFolder;
   el("save-name").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();

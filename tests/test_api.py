@@ -172,6 +172,18 @@ def test_save_to_a_chosen_base_path(tmp_path):
     assert (tmp_path / "myscan.toaster.schema.yaml").exists()
 
 
+def test_mkdir_creates_folder_then_saves_into_it(tmp_path):
+    c, _ = _open_scan(tmp_path)
+    target = tmp_path / "runs" / "labels_v2"
+    r = c.post("/api/mkdir", json={"path": str(target)}).json()
+    assert target.is_dir()
+    assert r["path"].endswith("labels_v2")
+    # and the new folder is a valid save destination
+    c.post("/api/save", json={"path": str(target / "scan")})
+    assert (target / "scan.toaster.npy").exists()
+    assert (target / "scan.toaster.schema.yaml").exists()
+
+
 def test_reopen_restores_labels_and_class_names(tmp_path):
     c, path = _open_scan(tmp_path)
     c.post("/api/class/rename", json={"class_id": 1, "name": "rock"})

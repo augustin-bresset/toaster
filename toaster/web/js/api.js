@@ -40,6 +40,7 @@ export const api = {
   cloud: () => jget("/api/cloud"),
   state: () => jget("/api/state"),
   browse: (path = null) => jget("/api/browse" + (path ? "?path=" + encodeURIComponent(path) : "")),
+  mkdir: (path) => jpost("/api/mkdir", { path }),
   open: (path) => jpost("/api/open", { path }),
   pick: (index, modifiers = []) => jpost("/api/pick", { index, modifiers }),
   box: (indices, modifiers = []) => jpost("/api/box", { indices, modifiers }),

@@ -242,6 +242,18 @@ class AnnotationService:
         schema_out = self.schema_store.save(base, session.schema)
         return {"saved": str(labels_out), "schema": str(schema_out)}
 
+    def make_dir(self, path: str | Path) -> dict[str, Any]:
+        """Create a folder (the Save dialog's "New folder"). Local use only.
+
+        Returns the resolved path so the dialog can navigate straight into it.
+        """
+        target = Path(path).expanduser()
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ValueError(f"could not create folder {target}: {exc}") from exc
+        return {"path": str(target.resolve())}
+
 
 def _mods(modifiers: list[str] | None) -> frozenset:
     return frozenset(modifiers or ())

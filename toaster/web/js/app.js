@@ -247,6 +247,7 @@ async function loadCloud() {
   cloud.xyz = decodeArray(c.xyz);
   cloud.features = {};
   for (const [k, v] of Object.entries(c.features)) cloud.features[k] = decodeArray(v);
+  el("point-count").textContent = (cloud.xyz.length / 3).toLocaleString() + " pts";
   viewer.setCloud(cloud.xyz);
   applyState(await api.state());
 }

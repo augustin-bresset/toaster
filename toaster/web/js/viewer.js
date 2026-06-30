@@ -1,8 +1,9 @@
 // Three.js point-cloud viewport: shader points (per-point colour + visibility
-// alpha), orbit camera, screen-space picking and rubber-band box select.
+// alpha), free-tumble (trackball) camera, screen-space picking and rubber-band
+// box select.
 
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 
 const VERT = `
   attribute vec3 acolor;
@@ -41,10 +42,21 @@ export class Viewer {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = false; // crisp, predictable orbit (no inertia drift)
-    this.controls.rotateSpeed = 0.8;
-    this.controls.zoomSpeed = 0.9;
+    // TrackballControls (not OrbitControls): the cloud tumbles freely in any
+    // direction with no locked up-axis, so a scan that isn't gravity-aligned
+    // (e.g. a forest-path lidar frame) can be turned to any angle — OrbitControls
+    // would wall off at the poles ("blocked at a plane").
+    this.controls = new TrackballControls(this.camera, this.renderer.domElement);
+    this.controls.staticMoving = true; // no inertia drift — crisp, predictable
+    this.controls.rotateSpeed = 3.0;
+    this.controls.zoomSpeed = 1.2;
+    this.controls.panSpeed = 0.8;
+    this._boxMode = false;
+    // Box mode uses LEFT for the rubber band, so the camera moves on RIGHT
+    // (orbit) / MIDDLE (pan). Holding Shift turns a RIGHT-drag into a pan too —
+    // TrackballControls' button map has no modifier support, so we follow Shift.
+    window.addEventListener("keydown", (e) => e.key === "Shift" && this._applyMouseButtons(true));
+    window.addEventListener("keyup", (e) => e.key === "Shift" && this._applyMouseButtons(false));
 
     this.geom = null;
     this.points = null;
@@ -122,14 +134,27 @@ export class Viewer {
     this.controls.enabled = on;
   }
 
-  // Box mode: free the LEFT button for rubber-band selection while keeping the
-  // camera movable — RIGHT orbits, MIDDLE pans, wheel zooms (always on).
+  // Box mode frees the LEFT button for the rubber band, so the camera moves on
+  // RIGHT (orbit), MIDDLE (pan) and the wheel (zoom). Holding Shift turns a
+  // RIGHT-drag into a pan as well — the same lateral move a plain right-drag
+  // gives in point/voxel mode.
   setBoxMode(on) {
-    const M = THREE.MOUSE;
+    this._boxMode = on;
     this.controls.enabled = true;
-    this.controls.mouseButtons = on
-      ? { LEFT: null, MIDDLE: M.PAN, RIGHT: M.ROTATE }
-      : { LEFT: M.ROTATE, MIDDLE: M.DOLLY, RIGHT: M.PAN };
+    this._applyMouseButtons(false);
+  }
+
+  // TrackballControls quirk: `mouseButtons` maps an ACTION (LEFT→rotate,
+  // MIDDLE→zoom, RIGHT→pan) to the BUTTON INDEX that triggers it (0=left,
+  // 1=middle, 2=right); a value no button has (-1) disables that action.
+  _applyMouseButtons(shift) {
+    if (!this._boxMode) {
+      this.controls.mouseButtons = { LEFT: 0, MIDDLE: 1, RIGHT: 2 }; // rotate / zoom / pan
+    } else if (shift) {
+      this.controls.mouseButtons = { LEFT: -1, MIDDLE: -1, RIGHT: 2 }; // shift+right → pan
+    } else {
+      this.controls.mouseButtons = { LEFT: 2, MIDDLE: -1, RIGHT: 1 }; // right → orbit, middle → pan
+    }
   }
 
   // Draw a translucent wireframe cube around each voxel centre (one merged
@@ -226,6 +251,32 @@ export class Viewer {
     this.controls.update();
   }
 
+  // The world-space "up" the current view shows (the camera's local +Y) — i.e.
+  // which way is up on screen right now. Lets a ground filter know where gravity
+  // is once a not-level scan has been turned the right way round.
+  worldUp() {
+    const v = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    return [v.x, v.y, v.z];
+  }
+
+  // Step-rotate the view around the target by `angle` (radians): "roll" spins
+  // about the view axis (camera stays put), "pitch" tips over the screen's
+  // horizontal axis, "yaw" turns about the screen's vertical axis.
+  rotateView(kind, angle) {
+    const cam = this.camera;
+    const target = this.controls.target;
+    let axis;
+    if (kind === "roll") axis = new THREE.Vector3().subVectors(target, cam.position).normalize();
+    else if (kind === "pitch") axis = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
+    else axis = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion); // yaw
+    const q = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+    const offset = cam.position.clone().sub(target).applyQuaternion(q);
+    cam.position.copy(target).add(offset);
+    cam.up.applyQuaternion(q);
+    cam.lookAt(target);
+    this.controls.update();
+  }
+
   _aspect() {
     return this.container.clientWidth / Math.max(1, this.container.clientHeight);
   }
@@ -233,6 +284,7 @@ export class Viewer {
     this.camera.aspect = this._aspect();
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    this.controls.handleResize(); // TrackballControls caches the canvas rect for its math
   }
   _tick() {
     requestAnimationFrame(() => this._tick());

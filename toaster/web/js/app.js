@@ -21,6 +21,7 @@ function clearBox() {
 }
 let topZ = 10;
 let segSpecs = {}; // segmenter name -> [{name, type, default, min, max, step}]
+let segGravity = {}; // segmenter name -> bool (accepts an "up" gravity vector)
 let voxel = { size: 0.5, showEmpty: false, map: null, centers: new Float32Array(0) };
 const VOXEL_GRID_CAP = 30000; // max cubes to draw / cells to enumerate
 
@@ -126,7 +127,11 @@ boot();
 async function boot() {
   const meta = await api.meta();
   segSpecs = {};
-  for (const s of meta.segmenters) segSpecs[s.name] = s.params;
+  segGravity = {};
+  for (const s of meta.segmenters) {
+    segSpecs[s.name] = s.params;
+    segGravity[s.name] = s.gravity;
+  }
   el("seg-name").innerHTML = meta.segmenters.map((s) => `<option>${s.name}</option>`).join("");
   renderSegParams(el("seg-name").value);
   buildModes();
@@ -155,6 +160,18 @@ function renderSegParams(name) {
     if (p.max != null) input.max = p.max;
     input.step = p.step != null ? p.step : p.type === "int" ? 1 : "any";
     row.append(document.createTextNode(p.name + " "), input);
+    box.appendChild(row);
+  }
+  // Ground filters: let the user say "the camera is looking the right way up, so
+  // use its up as gravity" — sent as the `up` param instead of the cloud's +Z.
+  if (segGravity[name]) {
+    const row = document.createElement("label");
+    row.className = "row";
+    row.title = "Tumble the view until the scene looks upright, then tick this so the filter uses your view's up as gravity";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.id = "seg-gravity";
+    row.append(cb, document.createTextNode(" Use camera view as up (gravity)"));
     box.appendChild(row);
   }
 }
@@ -687,6 +704,19 @@ function clearSelectionIfAny() {
 function onKey(e) {
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
+
+  // Arrow keys step-rotate the view: ←/→ roll, ↑/↓ pitch, Shift+←/→ yaw — so a
+  // tilted scan can be turned to any angle without dragging. Hold to repeat.
+  if (e.key.startsWith("Arrow")) {
+    const STEP = Math.PI / 36; // 5° per press
+    if (e.key === "ArrowLeft") viewer.rotateView(e.shiftKey ? "yaw" : "roll", STEP);
+    else if (e.key === "ArrowRight") viewer.rotateView(e.shiftKey ? "yaw" : "roll", -STEP);
+    else if (e.key === "ArrowUp") viewer.rotateView("pitch", STEP);
+    else if (e.key === "ArrowDown") viewer.rotateView("pitch", -STEP);
+    e.preventDefault();
+    return;
+  }
+
   if (!state) return; // shortcuts do nothing until a cloud is loaded
   if (e.key === "Enter") act("assign");
   else if (e.key === "Escape") clearSelectionIfAny();
@@ -709,6 +739,8 @@ async function runSegmenter() {
     const v = +inp.value;
     params[inp.dataset.param] = inp.dataset.ptype === "int" ? Math.round(v) : v;
   }
+  const grav = el("seg-params").querySelector("#seg-gravity");
+  if (grav && grav.checked) params.up = viewer.worldUp(); // current view's up = gravity
   const btn = el("seg-run");
   btn.disabled = true;
   btn.classList.add("busy");

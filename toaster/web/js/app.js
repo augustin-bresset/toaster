@@ -312,11 +312,14 @@ async function openSaveDialog() {
     el("status").textContent = "open a cloud first";
     return;
   }
-  // Pre-fill with the cloud's own path so the sidecars land beside it — the one
-  // spot reopening the cloud looks. Navigate elsewhere only if you mean to.
+  // Pre-fill with the cloud's own name (extension dropped — the sidecars add
+  // their own) so they land beside it, the one spot reopening the cloud looks.
   const full = meta.source;
   const slash = full.lastIndexOf("/");
-  el("save-name").value = slash >= 0 ? full.slice(slash + 1) : full;
+  let nm = slash >= 0 ? full.slice(slash + 1) : full;
+  const dot = nm.lastIndexOf(".");
+  if (dot > 0) nm = nm.slice(0, dot);
+  el("save-name").value = nm;
   await renderSaveDir(slash >= 0 ? full.slice(0, slash) : ".");
   const w = el("win-save");
   w.style.display = "flex";

@@ -159,17 +159,22 @@ def _open_scan(tmp_path):
 def test_save_writes_labels_and_schema_sidecars(tmp_path):
     c, path = _open_scan(tmp_path)
     r = c.post("/api/save", json={}).json()  # no path -> beside the cloud
-    assert (tmp_path / "scan.bin.toaster.npy").exists()
-    assert (tmp_path / "scan.bin.toaster.schema.yaml").exists()
-    assert r["saved"].endswith("scan.bin.toaster.npy")
-    assert r["schema"].endswith("scan.bin.toaster.schema.yaml")
+    # extension dropped, '_'-separated — not "scan.bin.toaster.*".
+    assert (tmp_path / "scan_toaster.npy").exists()
+    schema = tmp_path / "scan_toaster_schema.yaml"
+    assert schema.exists()
+    assert r["saved"].endswith("scan_toaster.npy")
+    assert r["schema"].endswith("scan_toaster_schema.yaml")
+    # cloud path is recorded relative to the sidecar (beside it -> just the name).
+    assert "cloud: scan.bin" in schema.read_text()
+    assert str(path) not in schema.read_text()  # not the absolute path
 
 
 def test_save_to_a_chosen_base_path(tmp_path):
     c, _ = _open_scan(tmp_path)
     c.post("/api/save", json={"path": str(tmp_path / "myscan")})
-    assert (tmp_path / "myscan.toaster.npy").exists()
-    assert (tmp_path / "myscan.toaster.schema.yaml").exists()
+    assert (tmp_path / "myscan_toaster.npy").exists()
+    assert (tmp_path / "myscan_toaster_schema.yaml").exists()
 
 
 def test_mkdir_creates_folder_then_saves_into_it(tmp_path):
@@ -180,8 +185,8 @@ def test_mkdir_creates_folder_then_saves_into_it(tmp_path):
     assert r["path"].endswith("labels_v2")
     # and the new folder is a valid save destination
     c.post("/api/save", json={"path": str(target / "scan")})
-    assert (target / "scan.toaster.npy").exists()
-    assert (target / "scan.toaster.schema.yaml").exists()
+    assert (target / "scan_toaster.npy").exists()
+    assert (target / "scan_toaster_schema.yaml").exists()
 
 
 def test_reopen_restores_labels_and_class_names(tmp_path):

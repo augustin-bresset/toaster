@@ -239,7 +239,7 @@ class AnnotationService:
             raise RuntimeError("no save path given and the cloud has no source path")
         labels = cloud.ensure_labels(session.schema.unlabeled_id)
         labels_out = self.label_store.save(base, labels)
-        schema_out = self.schema_store.save(base, session.schema)
+        schema_out = self.schema_store.save(base, session.schema, cloud_path=cloud.source)
         return {"saved": str(labels_out), "schema": str(schema_out)}
 
     def make_dir(self, path: str | Path) -> dict[str, Any]:

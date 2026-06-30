@@ -13,9 +13,10 @@ def test_schema_store_roundtrip(tmp_path):
         classes=[LabelClass(0, "unlabeled", (0, 0, 0)), LabelClass(1, "tree", (1, 2, 3))],
         unlabeled_id=0,
     )
-    out = store.save(source, schema)
+    out = store.save(source, schema, cloud_path=source)
     assert out == store.path_for(source)
-    assert out.name == "scan.ply.toaster.schema.yaml"
+    assert out.name == "scan_toaster_schema.yaml"  # extension dropped, '_'-separated
+    assert "cloud:" in out.read_text()  # records the originating cloud path
     loaded = store.load(source)
     assert loaded is not None
     assert loaded.get(1).name == "tree"
@@ -32,7 +33,7 @@ def test_label_store_roundtrip(tmp_path):
     labels = np.array([0, 1, 2, 1], dtype=np.int32)
     out = store.save(source, labels)
     assert out == store.path_for(source)
-    assert out.name == "scan.ply.toaster.npy"
+    assert out.name == "scan_toaster.npy"  # extension dropped, '_'-separated
     loaded = store.load(source)
     assert np.array_equal(loaded, labels)
 

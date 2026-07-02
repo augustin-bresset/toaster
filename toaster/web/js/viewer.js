@@ -48,6 +48,11 @@ export class Viewer {
     // would wall off at the poles ("blocked at a plane").
     this.controls = new TrackballControls(this.camera, this.renderer.domElement);
     this.controls.staticMoving = true; // no inertia drift — crisp, predictable
+    // Render on demand: a frame is drawn only when something marked the view
+    // dirty. An app left open but untouched does zero GPU/renderer work — a
+    // desktop session idling for hours must not churn WebGL 60 times a second.
+    this._dirty = true;
+    this.controls.addEventListener("change", () => (this._dirty = true));
     this.controls.rotateSpeed = 3.0;
     this.controls.zoomSpeed = 1.2;
     this.controls.panSpeed = 0.8;
@@ -105,12 +110,14 @@ export class Viewer {
     const aa = this.geom.getAttribute("aalpha");
     aa.array.set(alpha);
     aa.needsUpdate = true;
+    this._dirty = true;
   }
 
   setHighlight(indices, xyz) {
     if (this.highlight) {
       this.scene.remove(this.highlight);
       this.highlight.geometry.dispose();
+      this.highlight.material.dispose(); // each call makes a new material — leaks its GL program otherwise
       this.highlight = null;
     }
     if (!indices || indices.length === 0) return;
@@ -131,16 +138,20 @@ export class Viewer {
     });
     this.highlight = new THREE.Points(g, m);
     this.scene.add(this.highlight);
+    this._dirty = true;
   }
 
   setPointSize(s) {
     this.material.uniforms.uSize.value = s;
+    this._dirty = true;
   }
   setRound(on) {
     this.material.uniforms.uRound.value = on ? 1 : 0;
+    this._dirty = true;
   }
   setBackground(hex) {
     this.scene.background = new THREE.Color(hex);
+    this._dirty = true;
   }
   setControlsEnabled(on) {
     this.controls.enabled = on;
@@ -191,6 +202,7 @@ export class Viewer {
     dir.normalize().multiplyScalar(speed * Math.min(dt, 0.1));
     this.camera.position.add(dir);
     this.controls.target.add(dir);
+    this._dirty = true;
   }
 
   // TrackballControls quirk: `mouseButtons` maps an ACTION (LEFT→rotate,
@@ -235,13 +247,16 @@ export class Viewer {
     const m = new THREE.LineBasicMaterial({ color: 0xe10600, transparent: true, opacity: 0.25 });
     this.voxelGrid = new THREE.LineSegments(g, m);
     this.scene.add(this.voxelGrid);
+    this._dirty = true;
   }
 
   clearVoxelGrid() {
     if (this.voxelGrid) {
       this.scene.remove(this.voxelGrid);
       this.voxelGrid.geometry.dispose();
+      this.voxelGrid.material.dispose();
       this.voxelGrid = null;
+      this._dirty = true;
     }
   }
 
@@ -299,6 +314,7 @@ export class Viewer {
     this.camera.far = s.radius * 50;
     this.camera.updateProjectionMatrix();
     this.controls.update();
+    this._dirty = true;
   }
 
   // The world-space "up" the current view shows (the camera's local +Y) — i.e.
@@ -325,6 +341,7 @@ export class Viewer {
     cam.up.applyQuaternion(q);
     cam.lookAt(target);
     this.controls.update();
+    this._dirty = true;
   }
 
   _aspect() {
@@ -335,11 +352,14 @@ export class Viewer {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
     this.controls.handleResize(); // TrackballControls caches the canvas rect for its math
+    this._dirty = true;
   }
   _tick() {
     requestAnimationFrame(() => this._tick());
     this._fly(this._clock.getDelta());
-    this.controls.update();
+    this.controls.update(); // fires "change" (→ dirty) when a drag/wheel moved the camera
+    if (!this._dirty) return;
+    this._dirty = false;
     this.renderer.render(this.scene, this.camera);
   }
 }

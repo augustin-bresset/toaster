@@ -58,6 +58,18 @@ export class Viewer {
     window.addEventListener("keydown", (e) => e.key === "Shift" && this._applyMouseButtons(true));
     window.addEventListener("keyup", (e) => e.key === "Shift" && this._applyMouseButtons(false));
 
+    // Fly navigation on physical WASD (`e.code`, so ZQSD on AZERTY): forward /
+    // back along the view axis, strafe left / right. Keydown/keyup only track
+    // which keys are held; the motion itself runs per-frame in _tick so it is
+    // smooth and diagonals (e.g. forward+left) combine.
+    this._flyKeys = new Set();
+    this._shiftDown = false;
+    this._radius = 10; // scene scale — refreshed by frame()
+    this._clock = new THREE.Clock();
+    window.addEventListener("keydown", (e) => this._flyKey(e, true));
+    window.addEventListener("keyup", (e) => this._flyKey(e, false));
+    window.addEventListener("blur", () => this._flyKeys.clear());
+
     this.geom = null;
     this.points = null;
     this.highlight = null;
@@ -142,6 +154,43 @@ export class Viewer {
     this._boxMode = on;
     this.controls.enabled = true;
     this._applyMouseButtons(false);
+  }
+
+  _flyKey(e, down) {
+    this._shiftDown = e.shiftKey;
+    if (!["KeyW", "KeyA", "KeyS", "KeyD"].includes(e.code)) return;
+    if (down) {
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
+      this._flyKeys.add(e.code);
+    } else {
+      // Always release, even if focus moved to an input mid-hold — otherwise
+      // the key would stick and the camera would drift forever.
+      this._flyKeys.delete(e.code);
+    }
+  }
+
+  // Move the camera by the fly keys currently held. The orbit target shifts by
+  // the same vector, so the pivot stays in front of the camera and the next
+  // mouse-drag orbits around where the user is now looking. Speed scales with
+  // the scene radius (like near/far in frame()); Shift boosts it.
+  _fly(dt) {
+    if (this._flyKeys.size === 0) return;
+    const has = (c) => this._flyKeys.has(c);
+    const fwd = this.camera.getWorldDirection(new THREE.Vector3());
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    const dir = new THREE.Vector3();
+    if (has("KeyW")) dir.add(fwd);
+    if (has("KeyS")) dir.sub(fwd);
+    if (has("KeyD")) dir.add(right);
+    if (has("KeyA")) dir.sub(right);
+    if (dir.lengthSq() === 0) return; // opposite keys cancel out
+    const speed = this._radius * (this._shiftDown ? 1.5 : 0.5);
+    // Cap dt: after the tab was backgrounded the first delta can be huge, and
+    // one giant step would teleport the camera out of the scene.
+    dir.normalize().multiplyScalar(speed * Math.min(dt, 0.1));
+    this.camera.position.add(dir);
+    this.controls.target.add(dir);
   }
 
   // TrackballControls quirk: `mouseButtons` maps an ACTION (LEFT→rotate,
@@ -241,6 +290,7 @@ export class Viewer {
   frame() {
     this.geom.computeBoundingSphere();
     const s = this.geom.boundingSphere;
+    this._radius = s.radius;
     this.controls.target.copy(s.center);
     // 3/4 aerial view for a Z-up scene (above, and to the side).
     const off = new THREE.Vector3(1.3, -1.3, 0.9).multiplyScalar(s.radius);
@@ -288,6 +338,7 @@ export class Viewer {
   }
   _tick() {
     requestAnimationFrame(() => this._tick());
+    this._fly(this._clock.getDelta());
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }

@@ -53,6 +53,10 @@ class SegmentBody(BaseModel):
     scope_to_selection: bool = True
 
 
+class ChannelBody(BaseModel):
+    path: str  # per-point label channel to load as a grouping
+
+
 class GroupSelectBody(BaseModel):
     group_id: int
     modifiers: list[str] = []
@@ -91,6 +95,28 @@ class RemoveClassBody(BaseModel):
     class_id: int
 
 
+class SaveBody(BaseModel):
+    path: str | None = None  # base path to save beside; None = beside the cloud
+
+
+class MkdirBody(BaseModel):
+    path: str  # full path of the folder to create
+
+
+class ApairoBody(BaseModel):
+    channel: str = "ground_truth"  # name of the apairo channel to write
+
+
+class SessionNameBody(BaseModel):
+    name: str  # session name = apairo write-back / resume channel
+
+
+class ApairoOpenBody(BaseModel):
+    sequence: str
+    channel: str
+    frame_index: int
+
+
 def create_app(schema: LabelSchema | None = None) -> FastAPI:
     """Build the FastAPI app around a single :class:`AnnotationService`."""
     app = FastAPI(title="Toaster", version="0.1.0")
@@ -122,6 +148,10 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     @app.get("/api/browse")
     def browse(path: str | None = None):
         return service.browse(path)
+
+    @app.post("/api/mkdir")
+    def mkdir(body: MkdirBody):
+        return service.make_dir(body.path)
 
     # -- lifecycle / selection / annotation --
     @app.post("/api/open")
@@ -160,14 +190,50 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     def clear_selection():
         return service.clear_selection()
 
+    @app.post("/api/select_all")
+    def select_all():
+        return service.select_all()
+
     @app.post("/api/save")
-    def save():
-        return service.save()
+    def save(body: SaveBody):
+        return service.save(body.path)
+
+    @app.get("/api/apairo_info")
+    def apairo_info():
+        return service.apairo_info()
+
+    @app.get("/api/apairo_nav")
+    def apairo_nav():
+        return service.apairo_nav()
+
+    @app.post("/api/apairo_open")
+    def apairo_open(body: ApairoOpenBody):
+        return service.apairo_open(body.sequence, body.channel, body.frame_index)
+
+    @app.post("/api/save_apairo")
+    def save_apairo(body: ApairoBody):
+        return service.save_apairo(body.channel)
+
+    @app.post("/api/session_name")
+    def session_name(body: SessionNameBody):
+        return service.set_session_channel(body.name)
+
+    @app.get("/api/apairo_resume")
+    def apairo_resume_info():
+        return service.apairo_resume_info()
+
+    @app.post("/api/apairo_resume")
+    def apairo_resume():
+        return service.resume_apairo()
 
     # -- segmentation / groups --
     @app.post("/api/segment")
     def segment(body: SegmentBody):
         return service.run_segmenter(body.name, body.params, body.scope_to_selection)
+
+    @app.post("/api/channel/open")
+    def channel_open(body: ChannelBody):
+        return service.open_channel(body.path)
 
     @app.post("/api/group/select")
     def group_select(body: GroupSelectBody):

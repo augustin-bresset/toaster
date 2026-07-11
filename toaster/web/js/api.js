@@ -40,6 +40,7 @@ export const api = {
   cloud: () => jget("/api/cloud"),
   state: () => jget("/api/state"),
   browse: (path = null) => jget("/api/browse" + (path ? "?path=" + encodeURIComponent(path) : "")),
+  mkdir: (path) => jpost("/api/mkdir", { path }),
   open: (path) => jpost("/api/open", { path }),
   pick: (index, modifiers = []) => jpost("/api/pick", { index, modifiers }),
   box: (indices, modifiers = []) => jpost("/api/box", { indices, modifiers }),
@@ -49,9 +50,19 @@ export const api = {
   undo: () => jpost("/api/undo"),
   redo: () => jpost("/api/redo"),
   clearSelection: () => jpost("/api/clear_selection"),
-  save: () => jpost("/api/save"),
+  selectAll: () => jpost("/api/select_all"),
+  save: (path = null) => jpost("/api/save", { path }),
+  apairoInfo: () => jget("/api/apairo_info"),
+  apairoNav: () => jget("/api/apairo_nav"),
+  apairoOpen: (sequence, channel, frame_index) =>
+    jpost("/api/apairo_open", { sequence, channel, frame_index }),
+  saveApairo: (channel) => jpost("/api/save_apairo", { channel }),
+  setSessionName: (name) => jpost("/api/session_name", { name }),
+  apairoResume: () => jget("/api/apairo_resume"),
+  resumeApairo: () => jpost("/api/apairo_resume"),
   segment: (name, params, scope_to_selection) =>
     jpost("/api/segment", { name, params, scope_to_selection }),
+  openChannel: (path) => jpost("/api/channel/open", { path }),
   groupSelect: (group_id, modifiers = []) =>
     jpost("/api/group/select", { group_id, modifiers }),
   groupAssign: (group_id, class_id = null) =>

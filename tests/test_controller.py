@@ -106,6 +106,14 @@ def _grouped_session(two_clusters, schema):
     return session
 
 
+def test_select_all_selects_every_point(two_clusters, schema):
+    session = _session(two_clusters, schema)
+    ctl = InteractionController(session, FakeViewer())
+    ctl.select_all()
+    assert session.selection.count == two_clusters.n
+    assert session.selection.indices.tolist() == list(range(two_clusters.n))
+
+
 def test_select_group_selects_whole_segment(two_clusters, schema):
     session = _grouped_session(two_clusters, schema)
     ctl = InteractionController(session, FakeViewer())

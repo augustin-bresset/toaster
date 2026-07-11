@@ -8,6 +8,7 @@ exact same engine the Qt app uses — only the front differs.
 
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -15,10 +16,10 @@ from typing import Any
 import numpy as np
 
 from toaster.builtin_schemas import builtin_schema
-from toaster.core import LabelSchema, Session
+from toaster.core import Grouping, LabelSchema, Session
 from toaster.interaction import InteractionController
 from toaster.io import load_cloud
-from toaster.persistence import LabelStore
+from toaster.persistence import LabelStore, SchemaStore, SessionStore
 from toaster.segment import get_segmenter, segmenter_specs
 from toaster.viewer import NullViewer
 
@@ -33,26 +34,61 @@ class AnnotationService:
     def __init__(self, schema: LabelSchema | None = None) -> None:
         self.schema = schema or builtin_schema()
         self.label_store = LabelStore()
+        self.schema_store = SchemaStore()
+        self.session_store = SessionStore()
+        # Cross-launch preferences: the recent-files list (so the browser reopens
+        # where you left off) and the session channel name (apairo write-back /
+        # resume). Loading never fails — a missing file yields defaults.
+        self.session_state = self.session_store.load()
         self._session: Session | None = None
         self._controller: InteractionController | None = None
+
+    def _remember_session(self) -> None:
+        """Persist the session preferences, ignoring a read-only filesystem."""
+        try:
+            self.session_store.save(self.session_state)
+        except OSError:
+            pass
 
     # -- lifecycle --------------------------------------------------------
 
     def open_cloud(self, path: str | Path) -> dict[str, Any]:
-        """Load a cloud (restoring saved labels) and start a session."""
+        """Load a cloud and start a session, restoring any saved labels and schema.
+
+        A cloud that has been labelled before carries two sidecars beside it:
+        ``<cloud>.toaster.npy`` (the labels) and ``<cloud>.toaster.schema.yaml``
+        (the class names/colours). Both are restored so reopening the cloud
+        continues exactly where it was left, with the right palette.
+
+        The literal path ``"demo"`` is a sentinel, not a file: it generates a fresh
+        procedural terrain scene (Perlin-noise hills, trees, patchy grass — see
+        :mod:`toaster.demo_scene`) and opens that instead, so there's always
+        something to try without hunting for a sample cloud first.
+        """
+        if str(path) == "demo":
+            from toaster.demo_scene import write_demo_cloud
+
+            path = write_demo_cloud()
         cloud = load_cloud(path)
+        schema = self.schema
         if cloud.source is not None:
+            stored_schema = self.schema_store.load(cloud.source)
+            if stored_schema is not None:
+                schema = stored_schema
             stored = self.label_store.load(cloud.source)
             if stored is not None and stored.shape == (cloud.n,):
                 cloud.labels = stored
-        cloud.ensure_labels(self.schema.unlabeled_id)
-        self._session = Session(cloud, self.schema)
+        cloud.ensure_labels(schema.unlabeled_id)
+        self._session = Session(cloud, schema)
         self._controller = InteractionController(self._session, NullViewer())
         # Adopt the first real class as the active brush (skip 'unlabeled').
-        for c in self.schema.classes:
-            if c.id != self.schema.unlabeled_id:
+        for c in schema.classes:
+            if c.id != schema.unlabeled_id:
                 self._controller.set_active_class(c.id)
                 break
+        # Remember this file so a bare relaunch reopens the browser in its folder.
+        self.session_state.remember(str(Path(path).expanduser().resolve()))
+        self._remember_session()
         return self.meta()
 
     @property
@@ -72,7 +108,15 @@ class AnnotationService:
             "n": self._session.cloud.n if self._session else 0,
             "segmenters": segmenter_specs(),  # [{name, params: [...]}]
             "source": str(self._session.cloud.source) if self._session else None,
+            "session_channel": self.session_state.session_channel,
         }
+
+    def set_session_channel(self, name: str) -> dict[str, Any]:
+        """Set (and persist) the session name — the apairo write-back / resume channel."""
+        cleaned = (name or "").strip() or "ground_truth"
+        self.session_state.session_channel = cleaned
+        self._remember_session()
+        return {"session_channel": cleaned}
 
     def browse(self, path: str | None = None) -> dict[str, Any]:
         """List a directory (folders first), flagging which files Toaster can open.
@@ -101,9 +145,18 @@ class AnnotationService:
                 "extensions": sorted(exts)}  # fmt: skip
 
     def _start_dir(self) -> Path:
-        """Where the file browser opens by default."""
+        """Where the file browser opens by default.
+
+        With a cloud open, its folder. Otherwise (a bare relaunch) the folder of
+        the most recent file that still exists, so you land back where you were —
+        falling back to the working directory on a first-ever run.
+        """
         if self._session is not None and self._session.cloud.source is not None:
             return Path(self._session.cloud.source).expanduser().resolve().parent
+        for recent in self.session_state.recent_files:
+            parent = Path(recent).expanduser().parent
+            if parent.is_dir():
+                return parent
         return Path.cwd()
 
     def cloud(self) -> dict[str, Any]:
@@ -158,11 +211,30 @@ class AnnotationService:
         self._ctl().clear_selection()
         return self.state()
 
+    def select_all(self) -> dict[str, Any]:
+        self._ctl().select_all()
+        return self.state()
+
     def run_segmenter(
         self, name: str, params: dict | None = None, scope_to_selection: bool = True
     ) -> dict[str, Any]:
         segmenter = get_segmenter(name, **(params or {}))
         self._ctl().run_segmenter(segmenter, scope_to_selection=scope_to_selection)
+        return self.state()
+
+    def open_channel(self, path: str | Path) -> dict[str, Any]:
+        """Load an external per-point label channel and make it the active grouping.
+
+        The file (``.npy``, ``.bin`` or a free integer format) holds one int per
+        point of the open cloud. Each distinct value becomes a browsable group,
+        so a labelisation from disk drives the Segments panel exactly like a
+        segmenter's output. Its stem names the grouping.
+        """
+        from toaster.io import load_label_channel
+
+        ctl = self._ctl()
+        group_id = load_label_channel(path, ctl.session.cloud)
+        ctl.load_grouping(Grouping(group_id=group_id, source=Path(path).stem))
         return self.state()
 
     def select_group(self, group_id: int, modifiers: list[str] | None = None) -> dict[str, Any]:
@@ -213,12 +285,165 @@ class AnnotationService:
         self._ctl().remove_class(class_id)
         return self.state()
 
-    def save(self) -> dict[str, Any]:
-        cloud = self._ctl().session.cloud
-        if cloud.source is None:
-            raise RuntimeError("cloud has no source path to save beside")
-        out = self.label_store.save(cloud.source, cloud.labels)
-        return {"saved": str(out)}
+    def save(self, path: str | Path | None = None) -> dict[str, Any]:
+        """Write the labels and the schema sidecars.
+
+        With ``path`` given they are written beside that base path
+        (``<path>.toaster.npy`` and ``<path>.toaster.schema.yaml``); otherwise
+        they go beside the cloud's own source. Reopening a cloud only finds the
+        sidecars that sit beside it, so the default keeps reopening seamless.
+        """
+        session = self._ctl().session
+        cloud = session.cloud
+        base = Path(path) if path is not None else cloud.source
+        if base is None:
+            raise RuntimeError("no save path given and the cloud has no source path")
+        labels = cloud.ensure_labels(session.schema.unlabeled_id)
+        labels_out = self.label_store.save(base, labels)
+        schema_out = self.schema_store.save(base, session.schema, cloud_path=cloud.source)
+        return {"saved": str(labels_out), "schema": str(schema_out)}
+
+    def apairo_info(self) -> dict[str, Any]:
+        """Tell the UI whether the open cloud can be written back as an apairo channel.
+
+        Detection is filesystem-only (no ``apairo`` import), so the option can be
+        *offered* even when the package is missing; ``apairo_installed`` flags
+        whether the write itself is currently possible.
+        """
+        from toaster.io.apairo_dataset import detect_apairo_channel
+
+        installed = importlib.util.find_spec("apairo") is not None
+        target = detect_apairo_channel(self._session.cloud.source) if self._session else None
+        if target is None:
+            return {"is_apairo": False, "apairo_installed": installed}
+        return {
+            "is_apairo": True,
+            "apairo_installed": installed,
+            "seq_dir": target.seq_dir,
+            "source_channel": target.source_channel,
+            "stem": target.stem,
+            "suggested_channel": self.session_state.session_channel,
+        }
+
+    def apairo_resume_info(self) -> dict[str, Any]:
+        """Whether the open frame already has labels in the session channel.
+
+        Lets the UI offer "resume" when reopening a scan that was labelled in a
+        previous session. Filesystem-only (no ``apairo`` import). Never offers the
+        source channel itself as a resume target.
+        """
+        from toaster.io.apairo_dataset import detect_apairo_channel
+
+        target = detect_apairo_channel(self._session.cloud.source) if self._session else None
+        channel = self.session_state.session_channel
+        if target is None or channel == target.source_channel:
+            return {"available": False}
+        frame = Path(target.seq_dir) / channel / f"{target.stem}.npy"
+        return {"available": frame.is_file(), "channel": channel, "stem": target.stem}
+
+    def resume_apairo(self) -> dict[str, Any]:
+        """Load the session channel's labels for this frame as the editable labels.
+
+        Reads ``<seq_dir>/<session_channel>/<stem>.npy`` (a full-source-frame label
+        array, as written by :meth:`save_apairo`) and gathers it onto the cloud's
+        kept points, so annotation continues where the previous session left off.
+        """
+        from toaster.io.apairo_dataset import detect_apairo_channel
+
+        session = self._ctl().session
+        cloud = session.cloud
+        target = detect_apairo_channel(cloud.source)
+        channel = self.session_state.session_channel
+        if target is None:
+            raise RuntimeError("this cloud is not inside an apairo dataset")
+        frame = Path(target.seq_dir) / channel / f"{target.stem}.npy"
+        if not frame.is_file():
+            raise RuntimeError(f"no '{channel}' labels for frame {target.stem}")
+        full = np.asarray(np.load(frame)).astype(np.int32, copy=False)
+        if full.ndim != 1:
+            raise RuntimeError(f"'{channel}' frame {target.stem} is not a 1-D label array")
+        expected = cloud.source_count if cloud.source_index is not None else cloud.n
+        if expected is not None and full.shape[0] != expected:
+            raise RuntimeError(
+                f"'{channel}' frame {target.stem} has {full.shape[0]} labels, expected {expected}"
+            )
+        cloud.labels = cloud.from_source_frame(full)
+        return self.state()
+
+    def apairo_nav(self) -> dict[str, Any]:
+        """Dataset → sequence → channel → frame position of the open cloud.
+
+        ``is_dataset`` is False when the cloud isn't inside an apairo dataset, so
+        the UI can hide the navigation menu. Otherwise it carries the sequences,
+        the sequence's point channels and the current frame index/count.
+        """
+        from toaster.io.apairo_dataset import detect_apairo_nav
+
+        nav = detect_apairo_nav(self._session.cloud.source) if self._session else None
+        if nav is None:
+            return {"is_dataset": False}
+        stem = nav.frames[nav.frame_index] if 0 <= nav.frame_index < len(nav.frames) else None
+        return {
+            "is_dataset": True,
+            "dataset_name": nav.dataset_name,
+            "sequences": nav.sequences,
+            "sequence": nav.sequence,
+            "channels": nav.channels,
+            "channel": nav.channel,
+            "frame_index": nav.frame_index,
+            "frame_count": len(nav.frames),
+            "frame_stem": stem,
+        }
+
+    def apairo_open(self, sequence: str, channel: str, frame_index: int) -> dict[str, Any]:
+        """Open a specific dataset frame (``frame_index`` clamped to the channel)."""
+        from toaster.io.apairo_dataset import detect_apairo_nav, frame_path
+
+        nav = detect_apairo_nav(self._session.cloud.source) if self._session else None
+        if nav is None:
+            raise RuntimeError("the open cloud is not inside an apairo dataset")
+        path = frame_path(nav.dataset_root, sequence, channel, frame_index)
+        if path is None or not path.is_file():
+            raise RuntimeError(f"no frame {frame_index} in {sequence}/{channel}")
+        return self.open_cloud(str(path))
+
+    def save_apairo(self, channel: str = "ground_truth") -> dict[str, Any]:
+        """Write the labels back into the apairo dataset as ``channel``.
+
+        Labels are realigned to the source frame (dropped NaN points become
+        ``unlabeled``) so the channel lines up index-for-index with the cloud it
+        was derived from, the same convention apairo's own preprocess channels use.
+        """
+        from toaster.io.apairo_dataset import (
+            detect_apairo_channel,
+            frame_timestamp,
+            write_labels_channel,
+        )
+
+        session = self._ctl().session
+        cloud = session.cloud
+        target = detect_apairo_channel(cloud.source)
+        if target is None:
+            raise RuntimeError("this cloud is not inside an apairo dataset")
+        timestamp = frame_timestamp(target.seq_dir, target.source_channel, target.stem)
+        if timestamp is None:
+            raise RuntimeError(f"no timestamp found for frame {target.stem}")
+        labels = cloud.ensure_labels(session.schema.unlabeled_id)
+        full = cloud.to_source_frame(labels, fill=session.schema.unlabeled_id)
+        out = write_labels_channel(target, full, timestamp, channel=channel)
+        return {"written": str(out), "channel": channel, "points": int(full.size)}
+
+    def make_dir(self, path: str | Path) -> dict[str, Any]:
+        """Create a folder (the Save dialog's "New folder"). Local use only.
+
+        Returns the resolved path so the dialog can navigate straight into it.
+        """
+        target = Path(path).expanduser()
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ValueError(f"could not create folder {target}: {exc}") from exc
+        return {"path": str(target.resolve())}
 
 
 def _mods(modifiers: list[str] | None) -> frozenset:

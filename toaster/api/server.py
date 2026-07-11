@@ -12,7 +12,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="toaster-web", description="Serve the Toaster web app (REST API + UI)."
     )
-    parser.add_argument("path", nargs="?", help="point cloud to open on startup")
+    parser.add_argument(
+        "path", nargs="?",
+        help="point cloud to open on startup, or 'demo' for a generated terrain scene",
+    )  # fmt: skip
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(

@@ -7,6 +7,7 @@ import { Viewer } from "./viewer.js";
 
 const el = (id) => document.getElementById(id);
 const viewer = new Viewer(el("viewport"));
+window.__toaster = { viewer }; // debug / headless-test handle (module scope is unreachable from outside)
 
 let cloud = { xyz: null, features: {} };
 let state = null; // decoded { snapshot, labels, grouping, selection }
@@ -20,9 +21,15 @@ function clearBox() {
   el("rubber").style.display = "none";
 }
 let topZ = 10;
+let nav = null; // apairo dataset position: { is_dataset, sequences, sequence, channels, channel, frame_index, frame_count, frame_stem }
+let dirty = false; // unsaved label changes on the current frame
 let segSpecs = {}; // segmenter name -> [{name, type, default, min, max, step}]
+let segGravity = {}; // segmenter name -> bool (accepts an "up" gravity vector)
 let voxel = { size: 0.5, showEmpty: false, map: null, centers: new Float32Array(0) };
 const VOXEL_GRID_CAP = 30000; // max cubes to draw / cells to enumerate
+// The one point-visibility mask (class eyes ∧ hide-labelled ∧ isolate) — purely
+// client-side, applied on top of the colours the semantic state produces.
+const vis = { hideLabeled: false, hiddenClasses: new Set(), isolate: false };
 
 // -- themes ------------------------------------------------------------------
 
@@ -126,17 +133,108 @@ boot();
 async function boot() {
   const meta = await api.meta();
   segSpecs = {};
-  for (const s of meta.segmenters) segSpecs[s.name] = s.params;
+  segGravity = {};
+  for (const s of meta.segmenters) {
+    segSpecs[s.name] = s.params;
+    segGravity[s.name] = s.gravity;
+  }
   el("seg-name").innerHTML = meta.segmenters.map((s) => `<option>${s.name}</option>`).join("");
   renderSegParams(el("seg-name").value);
   buildModes();
   wire();
   initTheme();
-  if (meta.n > 0) await loadCloud();
-  else {
+  el("session-name").value = meta.session_channel || "ground_truth";
+  if (meta.n > 0) {
+    await loadCloud();
+    await refreshNav(); // show the dataset menu if this cloud is in an apairo set
+    await maybeOfferResume(); // reopened a scan already labelled this session?
+  } else {
     el("status").textContent = "no cloud — pick one";
     openBrowser(); // launched without a file → let the user find one in a folder
   }
+}
+
+// -- apairo dataset navigation (sequence / channel / frame menu) --------------
+
+// Pull the dataset position of the open cloud and (re)render the Dataset window.
+async function refreshNav() {
+  try {
+    nav = await api.apairoNav();
+  } catch {
+    nav = { is_dataset: false };
+  }
+  renderNav();
+}
+
+function renderNav() {
+  const win = el("win-dataset");
+  if (!nav || !nav.is_dataset) {
+    win.style.display = "none";
+    return;
+  }
+  win.style.display = "flex";
+  el("ds-name").textContent = nav.dataset_name;
+  el("ds-seq").innerHTML = nav.sequences.map((s) => `<option>${s}</option>`).join("");
+  el("ds-seq").value = nav.sequence;
+  el("ds-channel").innerHTML = nav.channels.map((c) => `<option>${c}</option>`).join("");
+  el("ds-channel").value = nav.channel;
+  el("ds-frame").textContent = `${nav.frame_stem ?? "?"}  ${nav.frame_index + 1}/${nav.frame_count}`;
+  el("ds-prev").disabled = nav.frame_index <= 0;
+  el("ds-next").disabled = nav.frame_index >= nav.frame_count - 1;
+}
+
+// Open a specific dataset frame (server clamps the index), guarding unsaved work.
+async function navTo(sequence, channel, frameIndex) {
+  if (!nav || !nav.is_dataset) return;
+  if (dirty && !confirm("This frame has unsaved labels. Move anyway?")) return;
+  el("status").textContent = "opening…";
+  try {
+    await api.apairoOpen(sequence, channel, frameIndex);
+    currentGroup = null;
+    dirty = false;
+    clearBox();
+    await loadCloud();
+    await refreshNav();
+    await maybeOfferResume();
+    if (pickMode === "voxel") rebuildVoxels();
+    el("status").textContent = `${nav.sequence} · ${nav.channel} · ${nav.frame_stem}`;
+  } catch (e) {
+    el("status").textContent = "✗ " + e.message;
+  }
+}
+
+const navStep = (d) => {
+  if (nav && nav.is_dataset) navTo(nav.sequence, nav.channel, nav.frame_index + d);
+};
+
+// Reopened an apairo frame that already has labels in the session channel? Offer
+// to load them back as the editable labels so annotation resumes where it left
+// off (rather than starting the frame blank). Silent when there's nothing to resume.
+async function maybeOfferResume() {
+  let info;
+  try {
+    info = await api.apairoResume();
+  } catch {
+    return;
+  }
+  if (!info.available) return;
+  if (!confirm(`This scan was already labelled in '${info.channel}'. Resume from it?`)) return;
+  try {
+    applyState(await api.resumeApairo());
+    dirty = false; // the loaded labels match what's on disk
+    el("status").textContent = `resumed '${info.channel}' · frame ${info.stem}`;
+    toastPop();
+  } catch (e) {
+    el("status").textContent = "✗ resume: " + e.message;
+  }
+}
+
+function navJump() {
+  if (!nav || !nav.is_dataset) return;
+  const s = prompt(`Go to frame (1–${nav.frame_count}):`, String(nav.frame_index + 1));
+  if (s === null) return;
+  const i = parseInt(s, 10) - 1;
+  if (!Number.isNaN(i)) navTo(nav.sequence, nav.channel, i);
 }
 
 // Render the parameter fields for the selected segmenter from its spec.
@@ -157,6 +255,18 @@ function renderSegParams(name) {
     row.append(document.createTextNode(p.name + " "), input);
     box.appendChild(row);
   }
+  // Ground filters: let the user say "the camera is looking the right way up, so
+  // use its up as gravity" — sent as the `up` param instead of the cloud's +Z.
+  if (segGravity[name]) {
+    const row = document.createElement("label");
+    row.className = "row";
+    row.title = "Tumble the view until the scene looks upright, then tick this so the filter uses your view's up as gravity";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.id = "seg-gravity";
+    row.append(cb, document.createTextNode(" Use camera view as up (gravity)"));
+    box.appendChild(row);
+  }
 }
 
 async function loadCloud() {
@@ -164,6 +274,7 @@ async function loadCloud() {
   cloud.xyz = decodeArray(c.xyz);
   cloud.features = {};
   for (const [k, v] of Object.entries(c.features)) cloud.features[k] = decodeArray(v);
+  el("point-count").textContent = (cloud.xyz.length / 3).toLocaleString() + " pts";
   viewer.setCloud(cloud.xyz);
   applyState(await api.state());
 }
@@ -172,6 +283,7 @@ async function loadCloud() {
 
 let openDir = null; // the folder currently shown in the browser
 let openExts = []; // extensions a loader can open (from /api/browse), e.g. [".ply", ".bin"]
+let openMode = "cloud"; // "cloud" opens a point cloud; "channel" loads a label channel (any file)
 
 async function openBrowser(path) {
   let data;
@@ -201,6 +313,8 @@ function renderEntries(data, filter) {
     if (filter && !e.name.startsWith(filter)) continue;
     shown++;
     if (e.is_dir) list.appendChild(browseRow(e.name + "/", () => openBrowser(e.path)));
+    // Channel mode loads a raw label file (any extension), so every file is pickable.
+    else if (openMode === "channel") list.appendChild(browseRow(e.name, () => openChannelFile(e.path)));
     else if (e.openable) list.appendChild(browseRow(e.name, () => openFile(e.path)));
     else list.appendChild(browseRow(e.name, null)); // unsupported format
   }
@@ -255,8 +369,17 @@ async function completePath() {
 function submitPath() {
   const val = el("open-input").value.trim();
   if (!val) return;
+  // Channel mode: a typed path is a label file unless it's clearly a folder.
+  if (openMode === "channel") {
+    if (val.endsWith("/")) openBrowser(val);
+    else openChannelFile(val);
+    return;
+  }
   const lower = val.toLowerCase();
-  if (openExts.some((x) => lower.endsWith(x))) openFile(val);
+  // "demo" is a sentinel the server understands (not a path): it generates a
+  // fresh procedural terrain scene instead of opening a file — see
+  // AnnotationService.open_cloud. Same keyword as `toaster demo` on the CLI.
+  if (lower === "demo" || openExts.some((x) => lower.endsWith(x))) openFile(val);
   else openBrowser(val);
 }
 
@@ -270,18 +393,172 @@ function browseRow(label, onClick) {
 }
 
 async function openFile(path) {
+  // Switching clouds discards the current frame's in-memory labels; warn if any
+  // are unsaved (sidecar or apairo channel). First open (dirty=false) is silent.
+  if (dirty && !confirm("This frame has unsaved labels. Open another anyway?")) return;
   el("status").textContent = "opening…";
   try {
     await api.open(path); // starts a fresh server-side session
     el("win-open").style.display = "none";
     el("win-groups").style.display = "none";
     currentGroup = null;
+    dirty = false;
     clearBox();
     await loadCloud();
+    await refreshNav(); // shows the dataset menu when the file is inside one
+    await maybeOfferResume();
     if (pickMode === "voxel") rebuildVoxels();
     el("status").textContent = "opened " + (path.split("/").pop() || path);
   } catch (e) {
     el("status").textContent = "✗ " + e.message;
+  }
+}
+
+// -- label channel (load an external labelisation as groups, like a segmenter) --
+
+// Open the file browser in "channel" mode: pick any file holding one int per point.
+function openChannelBrowser() {
+  if (!state) {
+    el("status").textContent = "open a cloud first";
+    return;
+  }
+  openMode = "channel";
+  el("open-title").textContent = "Open a label channel";
+  el("open-input").placeholder = "/path/to/channel — Tab completes, Enter opens";
+  openBrowser(openDir);
+}
+
+// Load the picked file as a grouping (each distinct value = a browsable group).
+async function openChannelFile(path) {
+  el("status").textContent = "loading channel…";
+  try {
+    applyState(await api.openChannel(path));
+    el("win-open").style.display = "none";
+    showGroupsWindow();
+    const g = state.snapshot.active_grouping;
+    el("status").textContent = g ? `channel '${g.source}' · ${g.n_groups} groups` : "channel loaded";
+    buzz("glitch");
+    toastPop();
+    levelUp();
+  } catch (e) {
+    el("status").textContent = "✗ channel: " + e.message;
+  }
+}
+
+// -- save dialog (choose where the annotation lands, default beside the cloud) --
+
+let saveDir = null; // folder currently shown in the save dialog
+
+async function openSaveDialog() {
+  const meta = await api.meta();
+  if (!meta.source) {
+    el("status").textContent = "open a cloud first";
+    return;
+  }
+  // Pre-fill with the cloud's own name (extension dropped — the sidecars add
+  // their own) so they land beside it, the one spot reopening the cloud looks.
+  const full = meta.source;
+  const slash = full.lastIndexOf("/");
+  let nm = slash >= 0 ? full.slice(slash + 1) : full;
+  const dot = nm.lastIndexOf(".");
+  if (dot > 0) nm = nm.slice(0, dot);
+  el("save-name").value = nm;
+  await renderSaveDir(slash >= 0 ? full.slice(0, slash) : ".");
+  await refreshApairoBlock();
+  const w = el("win-save");
+  w.style.display = "flex";
+  w.style.zIndex = ++topZ;
+  el("save-name").focus();
+  el("save-name").select();
+}
+
+async function renderSaveDir(dir) {
+  let data;
+  try {
+    data = await api.browse(dir);
+  } catch (e) {
+    el("status").textContent = "✗ " + e.message;
+    return;
+  }
+  saveDir = data.path;
+  el("save-dir").textContent = data.path;
+  const list = el("save-list");
+  list.innerHTML = "";
+  if (data.parent) list.appendChild(browseRow("../", () => renderSaveDir(data.parent)));
+  for (const e of data.entries) {
+    if (e.is_dir) list.appendChild(browseRow(e.name + "/", () => renderSaveDir(e.path)));
+    else list.appendChild(browseRow(e.name, () => (el("save-name").value = e.name)));
+  }
+}
+
+// Show the "write to apairo dataset" proposal when the open cloud lives in one.
+async function refreshApairoBlock() {
+  const box = el("save-apairo");
+  let info;
+  try {
+    info = await api.apairoInfo();
+  } catch {
+    box.style.display = "none";
+    return;
+  }
+  if (!info.is_apairo) {
+    box.style.display = "none";
+    return;
+  }
+  box.style.display = "block";
+  el("save-apairo-channel").value = info.suggested_channel || "ground_truth";
+  const hint = el("save-apairo-hint");
+  const btn = el("save-apairo-btn");
+  if (info.apairo_installed) {
+    hint.textContent = `${info.source_channel} → frame ${info.stem}, aligned to the full lidar frame`;
+    btn.disabled = false;
+  } else {
+    hint.textContent = "needs the apairo package — pip install apairo";
+    btn.disabled = true;
+  }
+}
+
+async function doSaveApairo() {
+  const channel = el("save-apairo-channel").value.trim() || "ground_truth";
+  try {
+    const r = await api.saveApairo(channel);
+    // Keep the session name in step with what was just written, so resume looks
+    // in the right channel next time this frame is reopened.
+    if (channel !== el("session-name").value) {
+      const s = await api.setSessionName(channel);
+      el("session-name").value = s.session_channel;
+    }
+    el("win-save").style.display = "none";
+    dirty = false; // persisted to the dataset
+    el("status").textContent = `wrote apairo channel '${r.channel}' → ${r.written.split("/").pop()}`;
+    dingPop();
+  } catch (e) {
+    el("status").textContent = "✗ apairo write failed: " + e.message;
+  }
+}
+
+async function newSaveFolder() {
+  const name = prompt("New folder name:");
+  if (!name || !name.trim() || !saveDir) return;
+  try {
+    const r = await api.mkdir(joinPath(saveDir, name.trim()));
+    await renderSaveDir(r.path); // navigate into the folder we just created
+  } catch (e) {
+    el("status").textContent = "✗ " + e.message;
+  }
+}
+
+async function doSave() {
+  const name = el("save-name").value.trim();
+  if (!name || !saveDir) return;
+  try {
+    const r = await api.save(joinPath(saveDir, name));
+    el("win-save").style.display = "none";
+    dirty = false; // persisted to sidecars
+    el("status").textContent = "saved → " + r.saved.split("/").pop();
+    dingPop(); // café "Ding!"
+  } catch (e) {
+    el("status").textContent = "✗ save failed: " + e.message;
   }
 }
 
@@ -292,8 +569,8 @@ function applyState(raw) {
     grouping: decodeArray(raw.grouping),
     selection: decodeArray(raw.selection),
   };
-  const { colors, alpha } = computeColors(state, cloud);
-  viewer.setColors(colors, alpha);
+  if (state.selection.length === 0) vis.isolate = false; // isolate is armed per-selection
+  refreshColors();
   viewer.setHighlight(state.selection, cloud.xyz);
   renderClasses();
   renderModes();
@@ -302,6 +579,87 @@ function applyState(raw) {
   const s = state.snapshot;
   el("status").textContent =
     `Sel: ${state.selection.length.toLocaleString()} · Class: ${className(s.active_class)} · View: ${s.display_mode}`;
+}
+
+// -- point visibility ---------------------------------------------------------
+
+// Recompute colours from the semantic state, apply the visibility mask on top,
+// and push both to the GPU. Called on every state change and every mask toggle.
+function refreshColors() {
+  const { colors, alpha } = computeColors(state, cloud);
+  applyVisibility(alpha);
+  viewer.setColors(colors, alpha);
+}
+
+// Zero the alpha of masked points. Selected points always stay visible — they
+// are what you're working on — and alpha < 0.5 also makes a point unpickable,
+// so a hidden point can't be selected or labelled by mistake.
+function applyVisibility(alpha) {
+  const labels = state.labels;
+  const unlabeled = state.snapshot.unlabeled_id;
+  const iso = vis.isolate && state.selection.length > 0;
+  let hidden = 0;
+  if (iso) {
+    alpha.fill(0);
+    for (const i of state.selection) alpha[i] = 1;
+    hidden = alpha.length - state.selection.length;
+  } else if (vis.hideLabeled || vis.hiddenClasses.size > 0) {
+    for (let i = 0; i < alpha.length; i++) {
+      if ((vis.hideLabeled && labels[i] !== unlabeled) || vis.hiddenClasses.has(labels[i])) {
+        alpha[i] = 0;
+        hidden++;
+      }
+    }
+    for (const i of state.selection) {
+      if (alpha[i] === 0) {
+        alpha[i] = 1;
+        hidden--;
+      }
+    }
+  }
+  renderVisPill(hidden);
+}
+
+// The single escape hatch: while anything is hidden, a pill sits bottom-right
+// saying how much — so the cloud never just looks mysteriously empty.
+function renderVisPill(hidden) {
+  el("vis-pill").style.display = hidden > 0 ? "flex" : "none";
+  if (hidden > 0) el("vis-count").textContent = hidden.toLocaleString();
+}
+
+function setHideLabeled(on) {
+  vis.hideLabeled = on;
+  el("hide-labeled").checked = on;
+  if (state) refreshColors();
+}
+
+function toggleClassEye(id) {
+  if (!vis.hiddenClasses.delete(id)) vis.hiddenClasses.add(id);
+  renderClasses();
+  refreshColors();
+}
+
+// Isolate hides everything but the current selection, and disarms itself when
+// the selection is cleared — the next selection starts with the full view.
+function toggleIsolate() {
+  if (state.selection.length === 0) {
+    el("status").textContent = "isolate: select something first";
+    return;
+  }
+  vis.isolate = !vis.isolate;
+  refreshColors();
+}
+
+function revealAll() {
+  if (!vis.hideLabeled && !vis.isolate && vis.hiddenClasses.size === 0) return;
+  vis.hideLabeled = false;
+  vis.isolate = false;
+  vis.hiddenClasses.clear();
+  el("hide-labeled").checked = false;
+  if (state) {
+    renderClasses(); // reset the class eyes
+    refreshColors();
+  }
 }
 
 const className = (id) => (state.snapshot.classes.find((c) => c.id === id) || {}).name || String(id);
@@ -348,6 +706,16 @@ function renderClasses() {
     const row = document.createElement("div");
     row.className = "item" + (c.id === state.snapshot.active_class ? " active" : "");
     row.innerHTML = `<span class="swatch" style="background:${rgb(c.color)}"></span>${c.id}  ${c.name}`;
+    const off = vis.hiddenClasses.has(c.id);
+    const eye = document.createElement("button");
+    eye.className = "eye" + (off ? " off" : "");
+    eye.textContent = off ? "⊘" : "👁";
+    eye.title = off ? "Show this class's points" : "Hide this class's points";
+    eye.onclick = (e) => {
+      e.stopPropagation(); // the row click would also switch the active class
+      toggleClassEye(c.id);
+    };
+    row.appendChild(eye);
     row.onclick = () => api.activeClass(c.id).then(applyState);
     box.appendChild(row);
   }
@@ -534,9 +902,23 @@ function exitVoxelMode() {
 function wire() {
   el("psize").oninput = (e) => viewer.setPointSize(+e.target.value);
   el("round").onchange = (e) => viewer.setRound(e.target.checked);
+  el("hide-labeled").onchange = (e) => setHideLabeled(e.target.checked);
+  el("vis-pill").onclick = revealAll;
   el("seg-name").onchange = () => renderSegParams(el("seg-name").value);
   el("seg-run").onclick = runSegmenter;
-  el("open-file").onclick = () => openBrowser(openDir);
+  el("seg-channel").onclick = openChannelBrowser;
+  // The session name is the apairo write-back channel and the one resume looks
+  // for; persist it server-side (which normalizes a blank back to ground_truth).
+  el("session-name").onchange = async () => {
+    const r = await api.setSessionName(el("session-name").value);
+    el("session-name").value = r.session_channel;
+  };
+  el("open-file").onclick = () => {
+    openMode = "cloud";
+    el("open-title").textContent = "Open a point cloud";
+    el("open-input").placeholder = "/path/to/cloud, or 'demo' — Tab completes, Enter opens";
+    openBrowser(openDir);
+  };
   el("open-input").addEventListener("keydown", (e) => {
     if (e.key === "Tab") {
       e.preventDefault();
@@ -548,12 +930,29 @@ function wire() {
       el("win-open").style.display = "none";
     }
   });
+  el("ds-seq").onchange = () => navTo(el("ds-seq").value, nav.channel, 0);
+  el("ds-channel").onchange = () => navTo(nav.sequence, el("ds-channel").value, nav.frame_index);
+  el("ds-prev").onclick = () => navStep(-1);
+  el("ds-next").onclick = () => navStep(1);
+  el("ds-frame").onclick = navJump;
+  el("save-confirm").onclick = doSave;
+  el("save-mkdir").onclick = newSaveFolder;
+  el("save-apairo-btn").onclick = doSaveApairo;
+  el("save-name").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      doSave();
+    } else if (e.key === "Escape") {
+      el("win-save").style.display = "none";
+    }
+  });
   el("grp-showall").onclick = () => api.groupsShowAll().then(applyState);
   el("grp-hideall").onclick = () => api.groupsHideAll().then(applyState);
   // Assign the active class to every checked (visible) segment at once.
   el("grp-assign").onclick = () =>
     api.groupsAssignVisible().then((s) => {
       applyState(s);
+      dirty = true;
       buzz("flicker");
     });
   // Closing the Segments window discards the (transient) segmentation entirely.
@@ -592,6 +991,7 @@ function wire() {
       api.classRemove(id).then(applyState);
   };
 
+  el("cam-reset").onclick = () => state && viewer.frame();
   document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => act(b.dataset.act)));
   document.querySelectorAll("[data-mode-pick]").forEach((b) => {
     b.onclick = () => setPickMode(b.dataset.modePick);
@@ -666,16 +1066,17 @@ async function act(name) {
     const n = state ? state.selection.length : 0;
     applyState(await api.assign());
     if (n > 0) {
+      dirty = true; // labels changed — guard against losing them on frame switch
       buzz("flicker"); // the neon stutters each time you stamp a label
       scorePop(n * 10); // arcade score (no-op in other themes)
     }
-  } else if (name === "undo") applyState(await api.undo());
-  else if (name === "redo") applyState(await api.redo());
-  else if (name === "save") {
-    const r = await api.save();
-    el("status").textContent = "saved " + r.saved.split("/").pop();
-    dingPop(); // café "Ding!"
-  }
+  } else if (name === "undo") {
+    applyState(await api.undo());
+    dirty = true;
+  } else if (name === "redo") {
+    applyState(await api.redo());
+    dirty = true;
+  } else if (name === "save") openSaveDialog(); // pick where it lands, then doSave()
 }
 
 // Clear the current selection (no-op / no round-trip if nothing is selected).
@@ -687,11 +1088,43 @@ function clearSelectionIfAny() {
 function onKey(e) {
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
-  if (!state) return; // shortcuts do nothing until a cloud is loaded
+
+  // Arrow keys step-rotate the view: ←/→ roll, ↑/↓ pitch, Shift+←/→ yaw — so a
+  // tilted scan can be turned to any angle without dragging. Hold to repeat.
+  if (e.key.startsWith("Arrow")) {
+    const STEP = Math.PI / 36; // 5° per press
+    if (e.key === "ArrowLeft") viewer.rotateView(e.shiftKey ? "yaw" : "roll", STEP);
+    else if (e.key === "ArrowRight") viewer.rotateView(e.shiftKey ? "yaw" : "roll", -STEP);
+    else if (e.key === "ArrowUp") viewer.rotateView("pitch", STEP);
+    else if (e.key === "ArrowDown") viewer.rotateView("pitch", -STEP);
+    e.preventDefault();
+    return;
+  }
+
+  if (e.key === ",") return navStep(-1); // dataset frame step (apairo mode only)
+  if (e.key === ".") return navStep(1);
+  if (e.key === "?") {
+    const w = el("win-help");
+    w.style.display = "flex";
+    w.style.zIndex = ++topZ;
+    return;
+  }
+  if (!state) return; // the rest do nothing until a cloud is loaded
+  const bare = !e.ctrlKey && !e.metaKey && !e.altKey; // don't shadow browser chords (Ctrl+H, …)
+  if (e.code === "KeyR" && bare) return viewer.frame();
+  if (e.code === "KeyH" && bare) return setHideLabeled(!vis.hideLabeled);
+  if (e.code === "KeyI" && bare) return toggleIsolate();
+  if (e.code === "KeyX" && bare) return revealAll();
   if (e.key === "Enter") act("assign");
   else if (e.key === "Escape") clearSelectionIfAny();
   else if (e.ctrlKey && e.key === "z") act("undo");
   else if (e.ctrlKey && (e.key === "y" || (e.shiftKey && e.key === "Z"))) act("redo");
+  else if (e.ctrlKey && e.key === "a") {
+    // Index-based, unlike a box drag: never misses a point to the visibility
+    // mask or the camera's current framing.
+    e.preventDefault();
+    api.selectAll().then(applyState);
+  }
   else if (/^[0-9]$/.test(e.key)) {
     const c = state?.snapshot.classes[+e.key];
     if (c) api.activeClass(c.id).then(() => act("assign"));
@@ -709,6 +1142,8 @@ async function runSegmenter() {
     const v = +inp.value;
     params[inp.dataset.param] = inp.dataset.ptype === "int" ? Math.round(v) : v;
   }
+  const grav = el("seg-params").querySelector("#seg-gravity");
+  if (grav && grav.checked) params.up = viewer.worldUp(); // current view's up = gravity
   const btn = el("seg-run");
   btn.disabled = true;
   btn.classList.add("busy");

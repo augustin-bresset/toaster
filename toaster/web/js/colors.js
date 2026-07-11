@@ -1,7 +1,8 @@
 // Compute per-point colours from the semantic state the API returns — the same
 // job toaster.viewer.colormap does in Python, here on the client so the wire only
-// carries labels/grouping, never colour buffers. Alpha is kept at 1 for every
-// point (nothing is hidden); de-emphasised segments are greyed, not removed.
+// carries labels/grouping, never colour buffers. Alpha starts at 1 for every
+// point; de-emphasised segments are greyed, not removed. Actual hiding is the
+// visibility mask's job (applyVisibility in app.js), which zeroes alphas after.
 
 // Kept in sync with toaster/viewer/colormap.py (_GROUP_PALETTE).
 const GROUP_PALETTE = [

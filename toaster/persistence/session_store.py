@@ -24,6 +24,7 @@ class SessionState:
     active_class: int = 0
     camera: list[float] | None = None  # opaque viewer camera pose
     recent_files: list[str] = field(default_factory=list)
+    session_channel: str = "ground_truth"  # apairo write-back channel / resume name
 
     def remember(self, path: str, limit: int = 10) -> None:
         """Move ``path`` to the front of the recent-files list."""

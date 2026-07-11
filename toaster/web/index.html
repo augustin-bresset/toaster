@@ -76,7 +76,7 @@
         <b>TOASTER</b>
       </span>
       <span class="sep"></span>
-      <button id="open-file" title="Open a point cloud from a folder">Open</button>
+      <button id="open-file" title="Open a point cloud or an apairo dataset">Open</button>
       <button data-act="assign">Assign</button>
       <button data-act="undo">Undo</button>
       <button data-act="redo">Redo</button>
@@ -87,8 +87,14 @@
       <button data-mode-pick="point" class="toggle active">Point</button>
       <button data-mode-pick="box" class="toggle">Box</button>
       <button data-mode-pick="voxel" class="toggle">Voxel</button>
+      <span class="sep"></span>
+      <button id="cam-reset" title="Reset the camera to the default framing (R)">Reset</button>
+      <button id="seg-channel" title="Load a labelisation channel (one int per point) from a file as groups">Load channel…</button>
+      <button data-open="win-help" title="Help &amp; shortcuts (?)">Help</button>
       <span class="spacer"></span>
       <span id="status">loading…</span>
+      <span class="sep"></span>
+      <span id="point-count" class="muted" title="Total points in the cloud">—</span>
       <span class="sep"></span>
       <select id="theme" title="Theme">
         <option value="toaster">Toaster</option>
@@ -134,11 +140,23 @@
         </div>
       </div>
 
-      <div class="window" id="win-display" style="left: 14px; top: 446px; width: 248px">
+      <div class="window" id="win-session" style="left: 14px; top: 452px; width: 248px">
+        <div class="titlebar">Session</div>
+        <div class="body">
+          <label class="row" title="Name of the apairo channel labels are written to, and the one Toaster offers to resume from when reopening a scan">
+            Name <input id="session-name" value="ground_truth" style="flex: 1" />
+          </label>
+        </div>
+      </div>
+
+      <div class="window" id="win-display" style="left: 14px; top: 592px; width: 248px">
         <div class="titlebar">Display</div>
         <div class="body">
-          <label class="row">Size <input id="psize" type="range" min="1" max="12" value="3" /></label>
+          <label class="row">Size <input id="psize" type="range" min="1" max="10" value="2" step="0.5" /></label>
           <label class="row"><input id="round" type="checkbox" /> Round points</label>
+          <label class="row" title="Hide every point that already carries a class — what stays on screen is the work left (H)">
+            <input id="hide-labeled" type="checkbox" /> Hide labelled points
+          </label>
         </div>
       </div>
 
@@ -157,7 +175,22 @@
         <div class="body"><div id="inspector"></div></div>
       </div>
 
-      <div class="window" id="win-groups" style="right: 14px; top: 52px; width: 256px; display: none">
+      <div class="window" id="win-dataset" style="right: 14px; top: 52px; width: 252px; display: none">
+        <div class="titlebar">Dataset</div>
+        <div class="body">
+          <div id="ds-name" class="muted" style="margin-bottom: 4px"></div>
+          <label class="row">seq <select id="ds-seq" style="flex: 1"></select></label>
+          <label class="row">channel <select id="ds-channel" style="flex: 1"></select></label>
+          <div class="row" style="align-items: center; gap: 6px; margin-top: 2px">
+            <button id="ds-prev" title="Previous frame (,)">◀</button>
+            <span id="ds-frame" class="count" title="Go to frame…"
+                  style="flex: 1; text-align: center; cursor: pointer">–</span>
+            <button id="ds-next" title="Next frame (.)">▶</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="window" id="win-groups" style="right: 280px; top: 52px; width: 256px; display: none">
         <div class="titlebar">
           <span id="groups-header">Segments</span>
           <button class="x" id="grp-close" title="Discard this segmentation">×</button>
@@ -177,15 +210,131 @@
 
       <div class="window" id="win-open" style="left: 320px; top: 70px; width: 480px; display: none">
         <div class="titlebar">
-          Open a point cloud
+          <span id="open-title">Open a point cloud</span>
           <button class="x" data-close="win-open">×</button>
         </div>
         <div class="body">
           <input id="open-input" type="text" spellcheck="false" autocomplete="off"
-                 placeholder="/path/to/cloud — Tab completes, Enter opens"
+                 placeholder="/path/to/cloud, or 'demo' — Tab completes, Enter opens"
                  style="width: 100%; margin-bottom: 6px" />
           <div id="open-list" class="list" style="max-height: 360px; overflow: auto"></div>
         </div>
+      </div>
+
+      <div class="window" id="win-save" style="left: 360px; top: 90px; width: 480px; display: none">
+        <div class="titlebar">
+          Save annotation
+          <button class="x" data-close="win-save">×</button>
+        </div>
+        <div class="body">
+          <div id="save-apairo" style="display: none; margin-bottom: 8px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 4px">
+            <div style="margin-bottom: 4px">📦 apairo dataset detected — write labels back as a channel</div>
+            <label class="row">channel
+              <input id="save-apairo-channel" type="text" spellcheck="false" value="ground_truth" style="flex: 1" />
+            </label>
+            <div id="save-apairo-hint" class="muted" style="margin: 2px 0 4px"></div>
+            <button id="save-apairo-btn" class="primary">Write apairo channel</button>
+          </div>
+          <div class="muted" style="margin-bottom: 4px">Folder: <span id="save-dir"></span></div>
+          <input id="save-name" type="text" spellcheck="false" autocomplete="off"
+                 placeholder="base filename" style="width: 100%; margin-bottom: 4px" />
+          <div class="muted" style="margin-bottom: 6px">
+            writes <code>&lt;name&gt;_toaster.npy</code> (labels) +
+            <code>&lt;name&gt;_toaster_schema.yaml</code> (class names)
+          </div>
+          <div class="row" style="margin-bottom: 6px">
+            <button id="save-mkdir" title="Create a new folder in the current one and open it">+ New folder</button>
+          </div>
+          <div id="save-list" class="list" style="max-height: 300px; overflow: auto"></div>
+          <button id="save-confirm" class="primary" style="margin-top: 6px">Save here</button>
+        </div>
+      </div>
+
+      <div class="window" id="win-help" style="left: 360px; top: 64px; width: 452px; display: none">
+        <div class="titlebar">
+          Help — Toaster
+          <button class="x" data-close="win-help">×</button>
+        </div>
+        <div class="body">
+          <p class="muted">Label lidar point clouds in 3D: navigate, select points, assign semantic
+          classes. Run a segmenter so one click labels a whole cluster.</p>
+
+          <h4>Select</h4>
+          <ul>
+            <li><b>Point</b> mode — click a point to select; double-click to label it.</li>
+            <li><b>Box</b> mode — left-drag a rubber band to select many; double-click inside to label.</li>
+            <li><b>Voxel</b> mode — a click selects the whole voxel.</li>
+            <li><span class="key">Shift</span> adds to the selection · <span class="key">Ctrl</span> removes from it.</li>
+            <li><span class="key">Ctrl</span>+<span class="key">A</span> select every point — index-based, so it
+            can't miss one to the visibility mask or the camera's current framing (a box drag can).</li>
+          </ul>
+
+          <h4>Label</h4>
+          <ul>
+            <li><span class="key">Enter</span> assign the active class to the selection</li>
+            <li><span class="key">0</span>–<span class="key">9</span> pick that class and assign in one go</li>
+            <li><span class="key">Esc</span> clear the selection</li>
+            <li><span class="key">Ctrl</span>+<span class="key">Z</span> / <span class="key">Ctrl</span>+<span class="key">Y</span> undo / redo</li>
+          </ul>
+
+          <h4>Camera</h4>
+          <ul>
+            <li><b>Point / Voxel</b> — left-drag orbit · right-drag pan · wheel zoom</li>
+            <li><b>Box</b> — right-drag orbit · <span class="key">Shift</span>+right-drag (or middle) pan · wheel zoom</li>
+            <li><span class="key">←</span><span class="key">→</span> roll · <span class="key">↑</span><span class="key">↓</span> pitch · <span class="key">Shift</span>+<span class="key">←</span><span class="key">→</span> yaw</li>
+            <li><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> fly — forward / left / back / right · <span class="key">Q</span>/<span class="key">E</span> down / up (physical keys — ZQSD+AE on AZERTY) · hold <span class="key">Shift</span> to go faster</li>
+            <li><span class="key">R</span> (or <b>Reset</b>) — recenter the camera on the cloud</li>
+          </ul>
+
+          <h4>Frames — apairo dataset</h4>
+          <ul>
+            <li><span class="key">,</span> / <span class="key">.</span> previous / next frame</li>
+            <li><b>Dataset</b> window — switch sequence &amp; channel; click the counter to jump to a frame</li>
+          </ul>
+
+          <h4>Segment</h4>
+          <ul>
+            <li>Pick a segmenter, set its params, <b>Run</b> — clusters appear in the <b>Segments</b> window.</li>
+            <li>Tick segments and <b>Assign checked</b>, or double-click a cluster to label it.</li>
+            <li>Ground filters — tick <b>Use camera view as up</b> after turning the scene upright.</li>
+          </ul>
+
+          <h4>Session</h4>
+          <ul>
+            <li><b>Name</b> (default <i>ground_truth</i>) — the apairo channel labels are written
+            to, and the one Toaster offers to <b>resume</b> from when you reopen a scan you
+            already labelled.</li>
+            <li><b>Load channel…</b> (top toolbar) — open an existing labelisation (a file with
+            one int per point: <code>.npy</code>, <code>.bin</code>, …) as groups to browse and
+            assign. Rare enough to live in the toolbar rather than its own window.</li>
+          </ul>
+
+          <h4>Save</h4>
+          <ul>
+            <li><b>Save</b> writes labels + a class-names YAML beside the cloud (or a folder you pick / create).</li>
+            <li>In an apairo dataset — write the labels back as a channel (<i>ground_truth</i>).</li>
+          </ul>
+
+          <h4>Display</h4>
+          <ul>
+            <li>Views — <b>labels · grouping · intensity · height</b>. Point size &amp; round points in the <b>Display</b> window.</li>
+          </ul>
+
+          <h4>Hide points</h4>
+          <ul>
+            <li><span class="key">H</span> hide / show already-labelled points — what stays is the work left</li>
+            <li><span class="key">I</span> isolate the current selection (hide everything else)</li>
+            <li>👁 in the <b>Classes</b> panel — hide one class's points</li>
+            <li><span class="key">X</span> (or the pill, bottom right) reveal everything</li>
+            <li>Hidden points can't be picked or labelled.</li>
+          </ul>
+
+          <p class="muted">Open this anytime with <span class="key">?</span></p>
+        </div>
+      </div>
+
+      <div id="vis-pill" title="Click (or press X) to reveal every hidden point">
+        👁 <span id="vis-count">0</span> hidden — X reveals
       </div>
 
       <div id="rubber"></div>

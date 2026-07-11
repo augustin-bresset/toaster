@@ -14,6 +14,7 @@ from toaster.core import PointCloud
 from .apairo_loader import ApairoFrames
 from .base import Loader
 from .bin_loader import BinLoader
+from .label_channel import load_label_channel
 from .las_loader import LasLoader
 from .npy_loader import NpyLoader
 from .pcd_loader import PcdLoader
@@ -25,6 +26,7 @@ __all__ = [
     "register_loader",
     "load_cloud",
     "supported_extensions",
+    "load_label_channel",
     "ApairoFrames",
 ]
 

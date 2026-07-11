@@ -55,8 +55,8 @@ wheels = [
 
 [[package]]
 name = "apairo"
-version = "0.4.0"
-source = { git = "https://github.com/apairo-robotics/apairo.git#2d838c9986bface222b5396206b592fe1e46282c" }
+version = "0.5.0"
+source = { git = "https://github.com/apairo-robotics/apairo.git?rev=v0.5.0#c4fb4d17040bb3e8d54792809ca2f467b5ece2e7" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -2418,6 +2418,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/3d/25/9491695c22c4842c5b3903b4dc172e0eecf67a27c0af34a71512c9b76a0a/pywebview-6.2.1-py3-none-any.whl", hash = "sha256:9d07275f53894ab4d5e2e0e996227193e7187dec276d9b624dccbce029216b46", size = 525463, upload-time = "2026-04-15T09:02:10.186Z" },
 ]
 
+[package.optional-dependencies]
+pyside6 = [
+    { name = "pyside6" },
+    { name = "qtpy" },
+]
+
 [[package]]
 name = "pywin32"
 version = "312"
@@ -2500,7 +2506,7 @@ name = "qtpy"
 version = "2.4.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "packaging", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "packaging" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/70/01/392eba83c8e47b946b929d7c46e0f04b35e9671f8bb6fc36b6f7945b4de8/qtpy-2.4.3.tar.gz", hash = "sha256:db744f7832e6d3da90568ba6ccbca3ee2b3b4a890c3d6fbbc63142f6e4cdf5bb", size = 66982, upload-time = "2025-02-11T15:09:25.759Z" }
 wheels = [
@@ -3011,8 +3017,7 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "plyfile" },
-    { name = "pyside6" },
-    { name = "pywebview" },
+    { name = "pywebview", extra = ["pyside6"] },
     { name = "pyyaml" },
     { name = "scikit-learn" },
     { name = "uvicorn", extra = ["standard"] },
@@ -3049,7 +3054,7 @@ viewer3d = [
 
 [package.metadata]
 requires-dist = [
-    { name = "apairo", marker = "extra == 'apairo'", git = "https://github.com/apairo-robotics/apairo.git" },
+    { name = "apairo", marker = "extra == 'apairo'", git = "https://github.com/apairo-robotics/apairo.git?rev=v0.5.0" },
     { name = "cloth-simulation-filter", marker = "extra == 'csf'" },
     { name = "fastapi" },
     { name = "hdbscan", marker = "extra == 'hdbscan'" },
@@ -3060,10 +3065,9 @@ requires-dist = [
     { name = "open3d", marker = "extra == 'open3d'" },
     { name = "playwright", marker = "extra == 'dev'" },
     { name = "plyfile" },
-    { name = "pyside6" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pyvista", marker = "extra == 'viewer3d'" },
-    { name = "pywebview" },
+    { name = "pywebview", extras = ["pyside6"] },
     { name = "pyyaml" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "scikit-learn", specifier = ">=1.3" },

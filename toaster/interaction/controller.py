@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 import numpy as np
 
-from toaster.core import Selection, Session
+from toaster.core import Grouping, Selection, Session
 from toaster.core.types import NOISE
 from toaster.segment.base import Segmenter
 from toaster.viewer.base import Modifiers, Viewer
@@ -96,6 +96,15 @@ class InteractionController:
         new = Selection.from_indices(indices, self.session.cloud.n)
         self._apply_selection(new, modifiers)
 
+    def select_all(self) -> None:
+        """Select every point of the cloud, independent of camera or visibility mask.
+
+        A screen-space box pick can silently miss points hidden by the
+        visibility mask or clipped by the camera's near/far planes; this
+        selects by index instead, so it's never short of the true total.
+        """
+        self._apply_selection(Selection.all(self.session.cloud.n), frozenset())
+
     def _apply_selection(self, new: Selection, modifiers: Modifiers) -> None:
         current = self.session.selection
         if "shift" in modifiers:
@@ -158,7 +167,15 @@ class InteractionController:
             if scope_to_selection and not self.session.selection.is_empty()
             else None
         )
-        grouping = segmenter.segment(self.session.cloud, selection)
+        self.load_grouping(segmenter.segment(self.session.cloud, selection))
+
+    def load_grouping(self, grouping: Grouping) -> None:
+        """Adopt an externally-produced grouping (a loaded channel) as the active one.
+
+        The same activation a segmenter run gets: stored, made active, shown in
+        the grouping view, fully visible. Lets a labelisation loaded from a file
+        drive the Segments panel exactly like a clusterer's output.
+        """
         self.session.add_grouping(grouping)
         self._hidden_groups.clear()  # a fresh grouping starts fully visible
         self.set_display_mode("grouping")

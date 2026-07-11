@@ -197,12 +197,17 @@ class LabelSchema:
             "semantic_map": {c.id: c.name for c in self.classes},
         }
 
-    def to_yaml(self, path: str | Path) -> Path:
-        """Write the schema to ``path`` as an apairo-style YAML and return it."""
+    def to_yaml(self, path: str | Path, extra: dict | None = None) -> Path:
+        """Write the schema to ``path`` as an apairo-style YAML and return it.
+
+        ``extra`` merges additional top-level keys into the document (e.g. the
+        originating cloud path); schema keys take precedence on any clash.
+        """
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
+        data = {**(extra or {}), **self.to_config()}
         with open(out, "w") as fh:
-            yaml.safe_dump(self.to_config(), fh, sort_keys=True)
+            yaml.safe_dump(data, fh, sort_keys=True)
         return out
 
     @classmethod

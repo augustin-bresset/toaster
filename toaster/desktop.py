@@ -48,7 +48,10 @@ def _serve_in_background(app, port: int):
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="toaster", description="Toaster — point-cloud labeler.")
-    parser.add_argument("path", nargs="?", help="point cloud to open on startup")
+    parser.add_argument(
+        "path", nargs="?",
+        help="point cloud to open on startup, or 'demo' for a generated terrain scene",
+    )  # fmt: skip
     parser.add_argument(
         "--plugin",
         action="append",

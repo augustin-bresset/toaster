@@ -8,6 +8,18 @@ import pytest
 from toaster.core import LabelClass, LabelSchema, PointCloud
 
 
+@pytest.fixture(autouse=True)
+def isolate_toaster_config(tmp_path_factory, monkeypatch):
+    """Point ``$HOME`` at a throwaway dir so no test reads or writes the user's
+    real ``~/.config/toaster/session.json``. ``AnnotationService`` persists the
+    session (recent files, session channel) there, so without this a stale local
+    session would leak into tests (and tests would clobber the developer's own).
+    """
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+
+
 @pytest.fixture
 def schema() -> LabelSchema:
     return LabelSchema(

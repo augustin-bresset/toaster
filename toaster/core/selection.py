@@ -52,6 +52,16 @@ class Selection:
         return cls(np.zeros(n, dtype=bool))
 
     @classmethod
+    def all(cls, n: int) -> Selection:
+        """Every point of a cloud of size ``n``.
+
+        Unlike a screen-space box pick, this is index-based: it can't miss a
+        point that's masked by the visibility mask or clipped by the camera's
+        near/far planes at the time of selection.
+        """
+        return cls(np.ones(n, dtype=bool))
+
+    @classmethod
     def from_mask(cls, mask: np.ndarray) -> Selection:
         """Build from a boolean mask."""
         return cls(mask)

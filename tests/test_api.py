@@ -147,5 +147,63 @@ def test_browse_defaults_to_open_cloud_folder(client):
     assert any(e["name"] == "scan.bin" for e in data["entries"])
 
 
+def _open_scan(tmp_path):
+    pts = np.random.default_rng(0).random((20, 4)).astype(np.float32)
+    path = tmp_path / "scan.bin"
+    pts.tofile(path)
+    c = TestClient(create_app())
+    c.post("/api/open", json={"path": str(path)})
+    return c, path
+
+
+def test_save_writes_labels_and_schema_sidecars(tmp_path):
+    c, path = _open_scan(tmp_path)
+    r = c.post("/api/save", json={}).json()  # no path -> beside the cloud
+    # extension dropped, '_'-separated — not "scan.bin.toaster.*".
+    assert (tmp_path / "scan_toaster.npy").exists()
+    schema = tmp_path / "scan_toaster_schema.yaml"
+    assert schema.exists()
+    assert r["saved"].endswith("scan_toaster.npy")
+    assert r["schema"].endswith("scan_toaster_schema.yaml")
+    # cloud path is recorded relative to the sidecar (beside it -> just the name).
+    assert "cloud: scan.bin" in schema.read_text()
+    assert str(path) not in schema.read_text()  # not the absolute path
+
+
+def test_save_to_a_chosen_base_path(tmp_path):
+    c, _ = _open_scan(tmp_path)
+    c.post("/api/save", json={"path": str(tmp_path / "myscan")})
+    assert (tmp_path / "myscan_toaster.npy").exists()
+    assert (tmp_path / "myscan_toaster_schema.yaml").exists()
+
+
+def test_mkdir_creates_folder_then_saves_into_it(tmp_path):
+    c, _ = _open_scan(tmp_path)
+    target = tmp_path / "runs" / "labels_v2"
+    r = c.post("/api/mkdir", json={"path": str(target)}).json()
+    assert target.is_dir()
+    assert r["path"].endswith("labels_v2")
+    # and the new folder is a valid save destination
+    c.post("/api/save", json={"path": str(target / "scan")})
+    assert (target / "scan_toaster.npy").exists()
+    assert (target / "scan_toaster_schema.yaml").exists()
+
+
+def test_reopen_restores_labels_and_class_names(tmp_path):
+    c, path = _open_scan(tmp_path)
+    c.post("/api/class/rename", json={"class_id": 1, "name": "rock"})
+    c.post("/api/box", json={"indices": [0, 1, 2]})
+    c.post("/api/assign", json={"class_id": 1})
+    c.post("/api/save", json={})
+
+    # A fresh app reopening the same cloud restores both the labels and the names.
+    c2 = TestClient(create_app())
+    c2.post("/api/open", json={"path": str(path)})
+    state = c2.get("/api/state").json()
+    assert (decode_array(state["labels"])[:3] == 1).all()  # labels restored
+    names = {cl["id"]: cl["name"] for cl in state["snapshot"]["classes"]}
+    assert names[1] == "rock"  # schema (class names) restored
+
+
 def test_browse_bad_dir_is_400(client):
     assert client.get("/api/browse", params={"path": "/no/such/dir/zzz"}).status_code == 400

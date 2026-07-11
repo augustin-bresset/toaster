@@ -23,6 +23,12 @@ def test_boolean_algebra():
     assert (a ^ b).indices.tolist() == [0, 3]
 
 
+def test_all():
+    sel = Selection.all(5)
+    assert sel.indices.tolist() == [0, 1, 2, 3, 4]
+    assert sel.count == 5
+
+
 def test_from_group():
     grouping = Grouping(np.array([0, 0, 1, -1, 1], np.int32))
     sel = Selection.from_group(grouping, 1)

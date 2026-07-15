@@ -5,6 +5,7 @@
 
 import * as THREE from "three";
 import { TrackballControls } from "three/addons/controls/TrackballControls.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { OctreeIndex } from "./octree.js";
 import { ReferenceGrid, OrbitIndicator } from "./overlays.js";
 
@@ -49,21 +50,29 @@ function coalesceRuns(indices) {
 const VERT = `
   attribute vec3 acolor;
   attribute float aalpha;
+  // uSize is pixels when uAttenuate == 0, world units (metres) when 1.
   uniform float uSize;
+  uniform float uAttenuate;
+  // (drawing-buffer half-height in px) * projectionMatrix[1][1] — turns a
+  // world size at view depth z into an on-screen pixel size.
+  uniform float uProjScalePx;
   varying vec3 vColor;
   varying float vAlpha;
+  varying float vSizePx; // the point's actual on-screen size, for the outline
   void main() {
     vColor = acolor;
     vAlpha = aalpha;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = uSize;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    gl_PointSize = uAttenuate > 0.5 ? uSize * uProjScalePx / max(0.0001, -mv.z) : uSize;
+    vSizePx = gl_PointSize;
   }`;
 
 const FRAG = `
   varying vec3 vColor;
   varying float vAlpha;
+  varying float vSizePx;
   uniform float uRound;
-  uniform float uSize;
   // Outline width as a fraction of the point's half-width/radius — relative,
   // not pixel-based, so it stays a thin sliver at any point size — but
   // clamped below to a fixed pixel budget so it doesn't grow into a fat,
@@ -84,10 +93,10 @@ const FRAG = `
     float shade = max(0.4, sqrt(max(0.0, 1.2 - rNorm)));
     vec3 shaded = vColor * shade;
 
-    // uOutline is a fraction of the half-width (uSize / 2 px); re-derive the
+    // uOutline is a fraction of the half-width (vSizePx / 2); re-derive the
     // fraction that a uOutlineMaxPx-wide rim would need at the current point
     // size, and never exceed it.
-    float outline = uSize > 0.0 ? min(uOutline, uOutlineMaxPx * 2.0 / uSize) : uOutline;
+    float outline = vSizePx > 0.0 ? min(uOutline, uOutlineMaxPx * 2.0 / vSizePx) : uOutline;
 
     if (uRound > 0.5) {
       float aa = fwidth(r);
@@ -103,8 +112,15 @@ const FRAG = `
   }`;
 
 export class Viewer {
-  constructor(container) {
+  // opts:
+  // - lodBudget: points drawn during camera motion (default 1M). Streaming
+  //   hosts with tighter frame budgets pass a smaller one.
+  constructor(container, { lodBudget = LOD_BUDGET } = {}) {
     this.container = container;
+    this.lodBudget = lodBudget;
+    // Hosts embedding several viewers set this to gate fly input to the
+    // hovered one (e.g. () => hovered); null = fly is always armed.
+    this.flyGate = null;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x1f2430);
     this.camera = new THREE.PerspectiveCamera(55, this._aspect(), 0.01, 100000);
@@ -113,16 +129,6 @@ export class Viewer {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
-    // TrackballControls (not OrbitControls): the cloud tumbles freely in any
-    // direction with no locked up-axis, so a scan that isn't gravity-aligned
-    // (e.g. a forest-path lidar frame) can be turned to any angle — OrbitControls
-    // would wall off at the poles ("blocked at a plane").
-    this.controls = new TrackballControls(this.camera, this.renderer.domElement);
-    this.controls.staticMoving = true; // no inertia drift — crisp, predictable
-    // TrackballControls ships hidden modifier keys (A/S/D force a drag to
-    // rotate/zoom/pan). Those are our fly keys: flying with S or D while
-    // orbiting turned the drag into abrupt zooms/pans. Neutralize them.
-    this.controls.keys = ["", "", ""];
     // Render on demand: the rAF loop only runs while something can still move
     // the view (a drag in progress, a fly key held, or a pending dirty frame)
     // and stops entirely otherwise. Merely returning early from a 60 fps rAF
@@ -131,15 +137,7 @@ export class Viewer {
     // memory until the renderer OOMs after ~15 minutes of idling.
     this._dirty = true;
     this._rafPending = false;
-    this._interacting = false; // between TrackballControls "start" and "end"
-    this.controls.addEventListener("start", () => {
-      this._interacting = true;
-      this._schedule();
-    });
-    this.controls.addEventListener("end", () => {
-      this._interacting = false;
-      this._requestRender();
-    });
+    this._interacting = false; // between the controls' "start" and "end" events
     // Fly navigation on physical WASD + QE (`e.code`, so layout-independent):
     // forward / back along the view axis, strafe left / right, and Q/E down /
     // up rerun-style along the screen's vertical. Keydown/keyup only track
@@ -187,19 +185,11 @@ export class Viewer {
     this._octree = null; // OctreeIndex over the worker-built node table
     this._octreeWorker = null;
     this._drawAttr = null; // reusable index attribute the octree cut writes into
-    this.controls.addEventListener("change", () => {
-      const now = performance.now();
-      this._motionUntil = now + LOD_SETTLE_MS;
-      this.orbitIndicator.poke(now);
-      this._requestRender();
-    });
-    this.controls.rotateSpeed = 3.0;
-    this.controls.zoomSpeed = 1.2;
-    this.controls.panSpeed = 0.8;
+
     // Box mode uses LEFT for the rubber band, so the camera moves on RIGHT
     // (orbit) / MIDDLE (pan). Holding Shift turns a RIGHT-drag into a pan too —
-    // TrackballControls' button map has no modifier support, so we follow the
-    // Shift key through the window handlers above.
+    // the button maps have no modifier support, so we follow the Shift key
+    // through the window handlers above.
     this._boxMode = false;
 
     this.geom = null;
@@ -207,9 +197,15 @@ export class Viewer {
     this.highlight = null;
     this.grid = new ReferenceGrid(this.scene);
     this.orbitIndicator = new OrbitIndicator(this.scene);
+    // Camera controls last: their event handlers poke the orbit indicator.
+    this.controls = null;
+    this._controlStyle = null;
+    this.setControlStyle("trackball");
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uSize: { value: 2.0 },
+        uAttenuate: { value: 0.0 },
+        uProjScalePx: { value: 1.0 },
         uRound: { value: 0.0 },
         uOutline: { value: 0.06 },
         uOutlineMaxPx: { value: 1.25 },
@@ -217,8 +213,62 @@ export class Viewer {
       vertexShader: VERT,
       fragmentShader: FRAG,
     });
+    this._updateProjScale();
+    this._requestRender();
+  }
 
-    window.addEventListener("resize", () => this._resize());
+  // Switch the camera control style. "trackball" (default) tumbles freely
+  // with no locked up-axis, so a scan that isn't gravity-aligned (e.g. a
+  // forest-path lidar frame) can be turned to any angle. "orbit" keeps the
+  // world's up upright — steadier for gravity-aligned, streamed scenes.
+  // The current camera pose and pivot survive the swap.
+  setControlStyle(style) {
+    if (style === this._controlStyle) return;
+    const target = this.controls ? this.controls.target.clone() : null;
+    if (this.controls) this.controls.dispose();
+    if (style === "orbit") {
+      this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+      this.controls.enableDamping = false; // no inertia drift — crisp, predictable
+    } else {
+      style = "trackball";
+      this.controls = new TrackballControls(this.camera, this.renderer.domElement);
+      this.controls.staticMoving = true; // no inertia drift — crisp, predictable
+      // TrackballControls ships hidden modifier keys (A/S/D force a drag to
+      // rotate/zoom/pan). Those are our fly keys: flying with S or D while
+      // orbiting turned the drag into abrupt zooms/pans. Neutralize them.
+      this.controls.keys = ["", "", ""];
+      this.controls.rotateSpeed = 3.0;
+      this.controls.zoomSpeed = 1.2;
+      this.controls.panSpeed = 0.8;
+    }
+    this._controlStyle = style;
+    if (target) this.controls.target.copy(target);
+    this.controls.addEventListener("start", () => {
+      this._interacting = true;
+      this._schedule();
+    });
+    this.controls.addEventListener("end", () => {
+      this._interacting = false;
+      this._requestRender();
+    });
+    // "change" fires on every actual camera move (drag, wheel zoom, fly — the
+    // controls detect external position changes in update() — and the arrow-key
+    // rotations). That is the motion signal for the LOD: a plain click fires
+    // "start" but no "change", so selecting never blinks the subset in.
+    this.controls.addEventListener("change", () => {
+      const now = performance.now();
+      this._motionUntil = now + LOD_SETTLE_MS;
+      this.orbitIndicator.poke(now);
+      this._requestRender();
+    });
+    this._applyMouseButtons(false);
+    this.controls.update();
+    this._requestRender();
+  }
+
+  // Public: hosts that move the camera or mutate the scene directly (follow
+  // modes, extra objects) call this to get a frame drawn.
+  requestRender() {
     this._requestRender();
   }
 
@@ -234,7 +284,13 @@ export class Viewer {
     requestAnimationFrame(() => this._tick());
   }
 
-  setCloud(xyz) {
+  // Load a cloud. Options for streaming consumers (a new frame every tick):
+  // - octree: false skips the worker build — motion LOD falls back to the
+  //   random subset. Call buildOctree() when playback pauses instead; a
+  //   per-frame octree build would just churn the worker.
+  // - frame: false keeps the current camera instead of reframing — a stream
+  //   must not yank the camera on every frame.
+  setCloud(xyz, { octree = true, frame = true } = {}) {
     if (this.points) {
       this.scene.remove(this.points);
       this.geom.dispose();
@@ -248,7 +304,7 @@ export class Viewer {
     this._lodIndex = null;
     this._octree = null;
     this._drawAttr = null;
-    this._motionLod = n > LOD_BUDGET;
+    this._motionLod = n > this.lodBudget;
     if (this._octreeWorker) {
       this._octreeWorker.terminate();
       this._octreeWorker = null;
@@ -259,19 +315,42 @@ export class Viewer {
       // This is only the stopgap for the second or two the octree takes to build.
       const idx = new Uint32Array(n);
       for (let i = 0; i < n; i++) idx[i] = i;
-      for (let i = 0; i < LOD_BUDGET; i++) {
+      for (let i = 0; i < this.lodBudget; i++) {
         const j = i + Math.floor(Math.random() * (n - i));
         const t = idx[i];
         idx[i] = idx[j];
         idx[j] = t;
       }
-      this._lodIndex = new THREE.BufferAttribute(idx.slice(0, LOD_BUDGET), 1);
+      this._lodIndex = new THREE.BufferAttribute(idx.slice(0, this.lodBudget), 1);
     }
-    if (n > OCTREE_MIN_POINTS) this._buildOctree(xyz, n);
+    if (octree && n > OCTREE_MIN_POINTS) this._buildOctree(xyz, n);
     this.points = new THREE.Points(this.geom, this.material);
     this.scene.add(this.points);
-    this.frame();
-    this.grid.rebuild(this._radius);
+    if (frame) {
+      this.frame();
+    } else {
+      // Still track the scene scale (fly speed, indicator sizing) — just
+      // don't touch the camera.
+      this.geom.computeBoundingSphere();
+      const s = this.geom.boundingSphere;
+      if (s && Number.isFinite(s.radius) && s.radius > 0) this._radius = s.radius;
+      this._requestRender();
+    }
+    // The grid is scale-derived; rebuilding it for every streamed frame whose
+    // extent wobbles a few percent would be pure churn.
+    if (!this._gridRadius || Math.abs(this._radius - this._gridRadius) > this._gridRadius * 0.25) {
+      this.grid.rebuild(this._radius);
+      this._gridRadius = this._radius;
+    }
+  }
+
+  // Build (or rebuild) the octree for the current cloud — for streaming
+  // consumers that load frames with {octree: false} and want exact-fast
+  // picking and the octree cut once playback pauses.
+  buildOctree() {
+    if (!this.geom) return;
+    const pos = this.geom.getAttribute("position");
+    if (pos.count > OCTREE_MIN_POINTS) this._buildOctree(pos.array, pos.count);
   }
 
   setColors(colors, alpha) {
@@ -349,6 +428,19 @@ export class Viewer {
     this.material.uniforms.uSize.value = s;
     this._requestRender();
   }
+  // With attenuation on, setPointSize's value is a WORLD size (metres) and
+  // points shrink with distance; off (default), it's a fixed pixel size.
+  setSizeAttenuation(on) {
+    this.material.uniforms.uAttenuate.value = on ? 1 : 0;
+    this._updateProjScale();
+    this._requestRender();
+  }
+  // world-size → on-screen-px factor; depends on the drawing-buffer height
+  // and the projection, so refresh after any resize or projection change.
+  _updateProjScale() {
+    this.material.uniforms.uProjScalePx.value =
+      (this.renderer.domElement.height / 2) * this.camera.projectionMatrix.elements[5];
+  }
   setRound(on) {
     this.material.uniforms.uRound.value = on ? 1 : 0;
     this._requestRender();
@@ -375,6 +467,7 @@ export class Viewer {
     this._shiftDown = e.shiftKey;
     if (!["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE"].includes(e.code)) return;
     if (down) {
+      if (this.flyGate && !this.flyGate()) return; // e.g. another panel is hovered
       // Chorded shortcuts are not fly input: on AZERTY, Ctrl+Z (undo) is the
       // physical KeyW — without this guard every undo lurched the camera forward.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -417,10 +510,22 @@ export class Viewer {
     this._dirty = true;
   }
 
-  // TrackballControls quirk: `mouseButtons` maps an ACTION (LEFT→rotate,
-  // MIDDLE→zoom, RIGHT→pan) to the BUTTON INDEX that triggers it (0=left,
-  // 1=middle, 2=right); a value no button has (-1) disables that action.
+  // The two control classes map buttons in opposite directions. Trackball:
+  // ACTION (LEFT→rotate, MIDDLE→zoom, RIGHT→pan) to the BUTTON INDEX that
+  // triggers it (0=left, 1=middle, 2=right; -1 disables the action). Orbit:
+  // BUTTON to the ACTION enum (null disables the button).
   _applyMouseButtons(shift) {
+    if (this._controlStyle === "orbit") {
+      const M = THREE.MOUSE;
+      if (!this._boxMode) {
+        this.controls.mouseButtons = { LEFT: M.ROTATE, MIDDLE: M.DOLLY, RIGHT: M.PAN };
+      } else if (shift) {
+        this.controls.mouseButtons = { LEFT: null, MIDDLE: null, RIGHT: M.PAN };
+      } else {
+        this.controls.mouseButtons = { LEFT: null, MIDDLE: M.PAN, RIGHT: M.ROTATE };
+      }
+      return;
+    }
     if (!this._boxMode) {
       this.controls.mouseButtons = { LEFT: 0, MIDDLE: 1, RIGHT: 2 }; // rotate / zoom / pan
     } else if (shift) {
@@ -488,7 +593,7 @@ export class Viewer {
       // The cut writes into one preallocated index attribute. Capacity: the
       // budget plus one worst-case node (traversal stops *after* the node that
       // crosses the budget), clamped to the cloud itself.
-      const capacity = Math.min(n, LOD_BUDGET + 16384);
+      const capacity = Math.min(n, this.lodBudget + 16384);
       this._drawAttr = new THREE.BufferAttribute(new Uint32Array(capacity), 1);
       this._drawAttr.setUsage(THREE.DynamicDrawUsage);
       console.log(`octree: ${this._octree.nodeCount} nodes over ${n} points in ${e.data.buildMs} ms`);
@@ -613,6 +718,7 @@ export class Viewer {
     this.camera.near = Math.max(s.radius / 1000, 0.001);
     this.camera.far = s.radius * 50;
     this.camera.updateProjectionMatrix();
+    this._updateProjScale();
     this.controls.update();
     this._requestRender();
   }
@@ -669,11 +775,18 @@ export class Viewer {
   _aspect() {
     return this.container.clientWidth / Math.max(1, this.container.clientHeight);
   }
+  // Public: hosts whose container resizes without a window resize (panel
+  // splitters, workspace layouts) call this from their own ResizeObserver.
+  resize() {
+    this._resize();
+  }
   _resize() {
     this.camera.aspect = this._aspect();
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-    this.controls.handleResize(); // TrackballControls caches the canvas rect for its math
+    // TrackballControls caches the canvas rect for its math; Orbit doesn't.
+    if (this.controls.handleResize) this.controls.handleResize();
+    this._updateProjScale();
     this._requestRender();
   }
 

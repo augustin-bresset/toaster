@@ -5,13 +5,24 @@
 import * as THREE from "three";
 import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 
-// Above this many points, camera motion is rendered from a pre-shuffled random
-// subset of this size; the full cloud is redrawn the moment the camera settles.
-// Only the draw list changes — attributes (and CPU picking) always see every
-// point, so nothing is ever decimated while actually labelling.
+// Above this many points, camera motion is rendered decimated; the full cloud
+// is redrawn the moment the camera settles. Only the draw list changes —
+// attributes (and CPU picking) always see every point, so nothing is ever
+// decimated while actually labelling. The decimation itself is an octree cut
+// (frustum-culled, dense near the camera, thinning with distance) built in a
+// worker; a pre-shuffled random subset covers the seconds until it's ready.
 const LOD_BUDGET = 1_000_000;
 // How long after the last camera move the view still counts as "in motion".
 const LOD_SETTLE_MS = 150;
+
+// Build the octree for any cloud bigger than this: even below the motion-LOD
+// threshold it makes picking O(nodes-near-cursor) instead of O(n).
+const OCTREE_MIN_POINTS = 200_000;
+// Keep descending into a node while its projected diameter exceeds this many
+// pixels — below it, the node's own sample is already ~1 point per pixel.
+const OCTREE_SPLIT_PX = 110;
+// Bounding-sphere radius of a node = half-edge * sqrt(3).
+const SQRT3 = Math.sqrt(3);
 
 // Orbit-pivot crosshair (rerun-style "what am I centred on" cue): stays fully
 // visible for this long after the last camera move, then fades out — makes the
@@ -192,8 +203,12 @@ export class Viewer {
     // rotations). That is the motion signal for the LOD: a plain click fires
     // "start" but no "change", so selecting never blinks the subset in.
     this._motionUntil = 0;
-    this._lodIndex = null; // pre-shuffled draw list, built by setCloud when n > LOD_BUDGET
+    this._motionLod = false; // motion frames render decimated (n > LOD_BUDGET)
+    this._lodIndex = null; // random-subset fallback until the octree is built
     this._lodOn = false; // the frame currently on screen was drawn decimated
+    this._octree = null; // worker-built node table + point permutation
+    this._octreeWorker = null;
+    this._drawAttr = null; // reusable index attribute the octree cut writes into
     this._orbitIndicatorUntil = 0; // linger deadline; fade-out runs for ORBIT_INDICATOR_FADE_MS past it
     this._orbitFadeIn = false;
     this._orbitFadeChangeTime = 0;
@@ -270,9 +285,17 @@ export class Viewer {
     this.geom.setAttribute("aalpha", new THREE.BufferAttribute(new Float32Array(n).fill(1), 1));
     this._lodOn = false;
     this._lodIndex = null;
-    if (n > LOD_BUDGET) {
+    this._octree = null;
+    this._drawAttr = null;
+    this._motionLod = n > LOD_BUDGET;
+    if (this._octreeWorker) {
+      this._octreeWorker.terminate();
+      this._octreeWorker = null;
+    }
+    if (this._motionLod) {
       // Partial Fisher-Yates: the first LOD_BUDGET slots become a uniform random
       // sample, so drawing them alone still shows the whole scene, just sparser.
+      // This is only the stopgap for the second or two the octree takes to build.
       const idx = new Uint32Array(n);
       for (let i = 0; i < n; i++) idx[i] = i;
       for (let i = 0; i < LOD_BUDGET; i++) {
@@ -283,6 +306,7 @@ export class Viewer {
       }
       this._lodIndex = new THREE.BufferAttribute(idx.slice(0, LOD_BUDGET), 1);
     }
+    if (n > OCTREE_MIN_POINTS) this._buildOctree(xyz, n);
     this.points = new THREE.Points(this.geom, this.material);
     this.scene.add(this.points);
     this.frame();
@@ -559,16 +583,88 @@ export class Viewer {
     }
   }
 
+  // Conservative screen-space bound of a node's bounding sphere: null when the
+  // whole sphere is behind the near plane (safe to prune), the string
+  // "straddle" when the camera is inside / the sphere crosses the near plane
+  // (projection untrustworthy — descend without pruning), else the projected
+  // centre in canvas px plus a radius that can only over-estimate.
+  _nodeCircle(ni, w, h, fovPx) {
+    const oct = this._octree;
+    const r = oct.half[ni] * SQRT3;
+    const v = this._pickV.set(oct.cx[ni], oct.cy[ni], oct.cz[ni]);
+    const zView = -this._pickV2.copy(v).applyMatrix4(this.camera.matrixWorldInverse).z;
+    if (zView + r < this.camera.near) return null;
+    if (zView - r < this.camera.near) return "straddle";
+    v.project(this.camera);
+    return {
+      sx: (v.x * 0.5 + 0.5) * w,
+      sy: (-v.y * 0.5 + 0.5) * h,
+      rpx: (r / (zView - r)) * fovPx, // nearest possible depth → max apparent size
+    };
+  }
+
+  // Test one node slice's points exactly like the brute-force loops below;
+  // `perPoint(i, sx, sy)` receives each visible on-screen point.
+  _scanSlice(ni, w, h, perPoint) {
+    const { order, start, count } = this._octree;
+    const pos = this.geom.getAttribute("position").array;
+    const alpha = this.geom.getAttribute("aalpha").array;
+    const v = this._pickV;
+    const end = start[ni] + count[ni];
+    for (let k = start[ni]; k < end; k++) {
+      const i = order[k];
+      if (alpha[i] < 0.5) continue;
+      v.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).project(this.camera);
+      if (v.z < -1 || v.z > 1) continue;
+      perPoint(i, (v.x * 0.5 + 0.5) * w, (-v.y * 0.5 + 0.5) * h);
+    }
+  }
+
+  // Depth-first octree walk that prunes subtrees whose screen bound fails
+  // `hit(sx, sy, rpx)`; every surviving node's slice goes through perPoint.
+  _pickWalk(w, h, hit, perPoint) {
+    const { children } = this._octree;
+    const fovPx = h / 2 / Math.tan((this.camera.fov * Math.PI) / 360);
+    const stack = [0];
+    while (stack.length > 0) {
+      const ni = stack.pop();
+      const c = this._nodeCircle(ni, w, h, fovPx);
+      if (c === null) continue;
+      if (c !== "straddle" && !hit(c.sx, c.sy, c.rpx)) continue;
+      this._scanSlice(ni, w, h, perPoint);
+      const cb = ni * 8;
+      for (let k = 0; k < 8; k++) if (children[cb + k] >= 0) stack.push(children[cb + k]);
+    }
+  }
+
   // Nearest *visible* point to a screen position, or -1. Robust (no raycaster
-  // threshold tuning): projects every point once per click.
+  // threshold tuning). With the octree: only nodes whose screen bound overlaps
+  // the cursor are visited; without it: projects every point once per click.
   pick(clientX, clientY) {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const mx = clientX - rect.left, my = clientY - rect.top;
+    const w = rect.width, h = rect.height;
+    let best = -1, bestD = 14 * 14;
+    if (this._octree) {
+      if (!this._pickV) { this._pickV = new THREE.Vector3(); this._pickV2 = new THREE.Vector3(); }
+      this._pickWalk(
+        w, h,
+        (sx, sy, rpx) => {
+          const dx = sx - mx, dy = sy - my;
+          const reach = rpx + 14;
+          return dx * dx + dy * dy <= reach * reach;
+        },
+        (i, sx, sy) => {
+          const dx = sx - mx, dy = sy - my;
+          const d = dx * dx + dy * dy;
+          if (d < bestD) { bestD = d; best = i; }
+        },
+      );
+      return best;
+    }
     const pos = this.geom.getAttribute("position").array;
     const alpha = this.geom.getAttribute("aalpha").array;
     const v = new THREE.Vector3();
-    const w = rect.width, h = rect.height;
-    let best = -1, bestD = 14 * 14;
     for (let i = 0; i < alpha.length; i++) {
       if (alpha[i] < 0.5) continue;
       v.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).project(this.camera);
@@ -586,11 +682,28 @@ export class Viewer {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const lo = [Math.min(x0, x1), Math.min(y0, y1)];
     const hi = [Math.max(x0, x1), Math.max(y0, y1)];
+    const w = rect.width, h = rect.height;
+    const out = [];
+    if (this._octree) {
+      if (!this._pickV) { this._pickV = new THREE.Vector3(); this._pickV2 = new THREE.Vector3(); }
+      this._pickWalk(
+        w, h,
+        (sx, sy, rpx) => {
+          // Distance from the node's screen circle to the rect: prune only
+          // when even the circle's closest approach misses the rect.
+          const dx = Math.max(lo[0] - sx, 0, sx - hi[0]);
+          const dy = Math.max(lo[1] - sy, 0, sy - hi[1]);
+          return dx * dx + dy * dy <= rpx * rpx;
+        },
+        (i, sx, sy) => {
+          if (sx >= lo[0] && sx <= hi[0] && sy >= lo[1] && sy <= hi[1]) out.push(i);
+        },
+      );
+      return out;
+    }
     const pos = this.geom.getAttribute("position").array;
     const alpha = this.geom.getAttribute("aalpha").array;
     const v = new THREE.Vector3();
-    const w = rect.width, h = rect.height;
-    const out = [];
     for (let i = 0; i < alpha.length; i++) {
       if (alpha[i] < 0.5) continue;
       v.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).project(this.camera);
@@ -656,11 +769,96 @@ export class Viewer {
     this.controls.handleResize(); // TrackballControls caches the canvas rect for its math
     this._requestRender();
   }
-  // Swap the draw list between the full cloud and the pre-shuffled subset.
+  // Hand the cloud to the octree worker; adopt the result when it lands.
+  // The xyz copy's buffer is transferred, so the only real cost here is one
+  // memcpy — the build itself happens off-thread.
+  _buildOctree(xyz, n) {
+    const worker = new Worker(new URL("./octree-worker.js", import.meta.url), { type: "module" });
+    this._octreeWorker = worker;
+    worker.onmessage = (e) => {
+      worker.terminate();
+      if (worker !== this._octreeWorker) return; // a newer cloud superseded this build
+      this._octreeWorker = null;
+      this._octree = e.data;
+      // The octree replaces the random fallback outright; free its 4 MB/M.
+      this._lodIndex = null;
+      // The cut writes into one preallocated index attribute. Capacity: the
+      // budget plus one worst-case node (traversal stops *after* the node that
+      // crosses the budget), clamped to the cloud itself.
+      const capacity = Math.min(n, LOD_BUDGET + 16384);
+      this._drawAttr = new THREE.BufferAttribute(new Uint32Array(capacity), 1);
+      this._drawAttr.setUsage(THREE.DynamicDrawUsage);
+      console.log(`octree: ${e.data.start.length} nodes over ${n} points in ${e.data.buildMs} ms`);
+    };
+    const copy = xyz.slice();
+    worker.postMessage({ xyz: copy, n }, [copy.buffer]);
+  }
+
+  // Breadth-first cut through the octree for the current camera: skip nodes
+  // outside the frustum, draw every visited node's own slice, and descend only
+  // while a node still covers more than OCTREE_SPLIT_PX on screen. BFS order
+  // means coarse coverage lands before fine detail, so running out of budget
+  // degrades resolution, never coverage.
+  _octreeCut() {
+    const oct = this._octree;
+    const { cx, cy, cz, half, start, count, children, order } = oct;
+    if (!this._frustum) {
+      this._frustum = new THREE.Frustum();
+      this._projMat = new THREE.Matrix4();
+      this._sphere = new THREE.Sphere();
+    }
+    // The cut runs before render(), so the camera's world matrix may not have
+    // caught up with this frame's controls.update() yet.
+    this.camera.updateMatrixWorld();
+    this._projMat.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this._frustum.setFromProjectionMatrix(this._projMat);
+    const camPos = this.camera.position;
+    const fovPx =
+      this.container.clientHeight / 2 / Math.tan((this.camera.fov * Math.PI) / 360);
+
+    const dst = this._drawAttr.array;
+    const capacity = dst.length;
+    const queue = [0];
+    let used = 0;
+    for (let qi = 0; qi < queue.length; qi++) {
+      const ni = queue[qi];
+      const r = half[ni] * SQRT3;
+      this._sphere.center.set(cx[ni], cy[ni], cz[ni]);
+      this._sphere.radius = r;
+      if (!this._frustum.intersectsSphere(this._sphere)) continue;
+      const cnt = count[ni];
+      if (used + cnt > capacity) break;
+      dst.set(order.subarray(start[ni], start[ni] + cnt), used);
+      used += cnt;
+      const dist = camPos.distanceTo(this._sphere.center) - r;
+      if (dist <= 0 || (2 * r * fovPx) / dist > OCTREE_SPLIT_PX) {
+        const cb = ni * 8;
+        for (let c = 0; c < 8; c++) if (children[cb + c] >= 0) queue.push(children[cb + c]);
+      }
+    }
+    return used;
+  }
+
+  // Swap the draw list between the full cloud and a decimated one — the octree
+  // cut when it's ready, the pre-shuffled random subset until then.
   _applyLod(on) {
+    if (!this.geom) return;
+    if (on && this._octree && this._drawAttr) {
+      const used = this._octreeCut();
+      if (this._drawAttr.addUpdateRange) {
+        this._drawAttr.clearUpdateRanges();
+        this._drawAttr.addUpdateRange(0, used);
+      }
+      this._drawAttr.needsUpdate = true;
+      if (this.geom.index !== this._drawAttr) this.geom.setIndex(this._drawAttr);
+      this.geom.setDrawRange(0, used);
+      this._lodOn = true;
+      return;
+    }
     const want = on ? this._lodIndex : null;
-    if (!this.geom || this.geom.index === want) return;
+    if (this.geom.index === want && this._lodOn === (want !== null)) return;
     this.geom.setIndex(want);
+    this.geom.setDrawRange(0, Infinity);
     this._lodOn = want !== null;
   }
 
@@ -669,7 +867,7 @@ export class Viewer {
     this._fly(this._clock.getDelta());
     this.controls.update(); // fires "change" (→ dirty + motion window) when the camera moved
     const now = performance.now();
-    const moving = this._flyKeys.size > 0 || (this._lodIndex && now < this._motionUntil);
+    const moving = this._motionLod && (this._flyKeys.size > 0 || now < this._motionUntil);
     const orbitIndicatorActive = this._tickOrbitIndicator(now);
     if (this._dirty) {
       this._dirty = false;

@@ -366,7 +366,7 @@ def test_isolate_mode_falls_back_to_full_recompute(page):
     assert out["alphaDiff"] == 0, "alphas diverged after assigning under isolate"
 
 
-def test_viewer_dispose_detaches_cleanly(server, browser):
+def test_engine_options_then_dispose(server, browser):
     # dispose() is for hosts that embed the engine and tear viewers down —
     # exercise it on its own page so the shared page fixture stays alive.
     page = browser.new_page(viewport={"width": 800, "height": 600})
@@ -376,6 +376,42 @@ def test_viewer_dispose_detaches_cleanly(server, browser):
     page.wait_for_function(
         "window.__toaster && window.__toaster.viewer._octree !== null", timeout=90000
     )
+    # Exercise the embedding-oriented options on this throwaway page first:
+    # orbit control style, world-size attenuation, streaming setCloud.
+    opts = page.evaluate(
+        """(() => {
+          const v = window.__toaster.viewer;
+          v.setControlStyle("orbit");
+          const orbitOk = v._controlStyle === "orbit" && v.controls.enableDamping === false;
+          v.setSizeAttenuation(true);
+          const attenOk =
+            v.material.uniforms.uAttenuate.value === 1 &&
+            v.material.uniforms.uProjScalePx.value > 0;
+          v.setSizeAttenuation(false);
+          v.setControlStyle("trackball");
+          const backOk = v._controlStyle === "trackball" && !!v.controls.staticMoving;
+          // Streaming: a smaller frame, no octree churn, camera untouched.
+          const camBefore = v.camera.position.toArray();
+          const xyz = new Float32Array(3000);
+          for (let i = 0; i < 1000; i++) {
+            xyz[i * 3] = Math.random() * 10;
+            xyz[i * 3 + 1] = Math.random() * 10;
+            xyz[i * 3 + 2] = Math.random();
+          }
+          v.setCloud(xyz, { octree: false, frame: false });
+          const camAfter = v.camera.position.toArray();
+          const streamOk =
+            v._octree === null &&
+            v.geom.getAttribute("position").count === 1000 &&
+            camBefore.every((x, i) => x === camAfter[i]);
+          return { orbitOk, attenOk, backOk, streamOk };
+        })()"""
+    )
+    assert opts["orbitOk"], "setControlStyle('orbit') must install OrbitControls without damping"
+    assert opts["attenOk"], "setSizeAttenuation must arm the world-size shader path"
+    assert opts["backOk"], "switching back to trackball must restore the free-tumble controls"
+    assert opts["streamOk"], "streaming setCloud must skip the octree and leave the camera alone"
+
     gone = page.evaluate(
         """(() => {
           window.__toaster.viewer.dispose();

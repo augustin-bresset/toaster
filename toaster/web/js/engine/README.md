@@ -28,13 +28,17 @@ entries (vendor them — see `toaster/web/vendor/`), and drive the `Viewer`.
 ```js
 const viewer = new Viewer(containerElement);
 viewer.setCloud(xyzFloat32);            // (n*3,) — owns LOD/octree rebuild
+viewer.setCloud(xyz, {octree: false, frame: false}); // streaming: no worker churn, camera untouched
+viewer.buildOctree();                   // when a stream pauses — restores exact-fast picking
 viewer.setColors(colors, alpha);        // full recolour: (n*3,) rgb + (n,) alpha in [0,1]
 const { colors, alpha } = viewer.colorArrays(); // live buffers for in-place patching…
 viewer.commitColors(touchedIndices);    // …then upload only the dirty ranges
 viewer.pick(clientX, clientY);          // nearest visible point index, or -1
 viewer.pickBox(x0, y0, x1, y1);         // visible point indices in a screen rect
 viewer.frame();                         // reset camera to frame the cloud
-viewer.setPointSize(px); viewer.setRound(bool); viewer.setBackground(hex);
+viewer.setPointSize(size); viewer.setRound(bool); viewer.setBackground(hex);
+viewer.setSizeAttenuation(bool);        // on: size is metres and shrinks with distance
+viewer.setControlStyle("trackball"|"orbit"); // free tumble vs upright orbit
 viewer.setBoxMode(bool);                // frees LEFT for a rubber band
 viewer.setHighlight(indices, xyz); viewer.setVoxelGrid(centers, size);
 viewer.rotateView("roll"|"pitch"|"yaw", radians); viewer.worldUp();

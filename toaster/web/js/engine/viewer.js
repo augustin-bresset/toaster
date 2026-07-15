@@ -140,16 +140,42 @@ export class Viewer {
       this._interacting = false;
       this._requestRender();
     });
-    // A drag can be interrupted without ever delivering a "pointerup" to the
-    // canvas — losing window focus mid-drag (alt-tab, a native dialog) is the
-    // common case in the desktop shell's embedded webview. Without this, the
+    // Fly navigation on physical WASD + QE (`e.code`, so layout-independent):
+    // forward / back along the view axis, strafe left / right, and Q/E down /
+    // up rerun-style along the screen's vertical. Keydown/keyup only track
+    // which keys are held; the motion itself runs per-frame in _tick so it is
+    // smooth and diagonals (e.g. forward+left) combine.
+    this._flyKeys = new Set();
+    this._shiftDown = false;
+    this._radius = 10; // scene scale — refreshed by frame()
+    this._clock = new THREE.Clock();
+
+    // Window-level listeners are kept in one named map so dispose() can remove
+    // them — a host that creates and destroys viewers must not leak handlers.
+    // Blur matters beyond politeness: a drag can be interrupted without ever
+    // delivering a "pointerup" to the canvas (alt-tab, a native dialog — the
+    // common case in the desktop shell's embedded webview). Without it the
     // "end" event above never fires, _interacting stays stuck true, and the
     // rAF loop below spins forever instead of parking — which is exactly the
     // Vulkan-fallback Oilpan leak this render-on-demand scheme exists to avoid.
-    window.addEventListener("blur", () => {
-      this._interacting = false;
-      this._requestRender();
-    });
+    // Shift toggles the box-mode button map; the rest is fly-key tracking.
+    this._winHandlers = {
+      keydown: (e) => {
+        if (e.key === "Shift") this._applyMouseButtons(true);
+        this._flyKey(e, true);
+      },
+      keyup: (e) => {
+        if (e.key === "Shift") this._applyMouseButtons(false);
+        this._flyKey(e, false);
+      },
+      blur: () => {
+        this._interacting = false;
+        this._flyKeys.clear();
+        this._requestRender();
+      },
+      resize: () => this._resize(),
+    };
+    for (const [type, fn] of Object.entries(this._winHandlers)) window.addEventListener(type, fn);
     // "change" fires on every actual camera move (drag, wheel zoom, fly — the
     // controls detect external position changes in update() — and the arrow-key
     // rotations). That is the motion signal for the LOD: a plain click fires
@@ -170,25 +196,11 @@ export class Viewer {
     this.controls.rotateSpeed = 3.0;
     this.controls.zoomSpeed = 1.2;
     this.controls.panSpeed = 0.8;
-    this._boxMode = false;
     // Box mode uses LEFT for the rubber band, so the camera moves on RIGHT
     // (orbit) / MIDDLE (pan). Holding Shift turns a RIGHT-drag into a pan too —
-    // TrackballControls' button map has no modifier support, so we follow Shift.
-    window.addEventListener("keydown", (e) => e.key === "Shift" && this._applyMouseButtons(true));
-    window.addEventListener("keyup", (e) => e.key === "Shift" && this._applyMouseButtons(false));
-
-    // Fly navigation on physical WASD + QE (`e.code`, so layout-independent):
-    // forward / back along the view axis, strafe left / right, and Q/E down /
-    // up rerun-style along the screen's vertical. Keydown/keyup only track
-    // which keys are held; the motion itself runs per-frame in _tick so it is
-    // smooth and diagonals (e.g. forward+left) combine.
-    this._flyKeys = new Set();
-    this._shiftDown = false;
-    this._radius = 10; // scene scale — refreshed by frame()
-    this._clock = new THREE.Clock();
-    window.addEventListener("keydown", (e) => this._flyKey(e, true));
-    window.addEventListener("keyup", (e) => this._flyKey(e, false));
-    window.addEventListener("blur", () => this._flyKeys.clear());
+    // TrackballControls' button map has no modifier support, so we follow the
+    // Shift key through the window handlers above.
+    this._boxMode = false;
 
     this.geom = null;
     this.points = null;
@@ -263,6 +275,7 @@ export class Viewer {
   }
 
   setColors(colors, alpha) {
+    if (!this.geom) return;
     const ca = this.geom.getAttribute("acolor");
     ca.array.set(colors);
     ca.needsUpdate = true;
@@ -275,6 +288,7 @@ export class Viewer {
   // The live GPU-side arrays, for in-place patching by the delta recolour.
   // Write into them, then call commitColors with the touched indices.
   colorArrays() {
+    if (!this.geom) return null;
     return {
       colors: this.geom.getAttribute("acolor").array,
       alpha: this.geom.getAttribute("aalpha").array,
@@ -286,6 +300,7 @@ export class Viewer {
   // cluster is usually index-local too). Falls back to a full upload when the
   // edit is too scattered for ranged updates to win.
   commitColors(indices) {
+    if (!this.geom) return;
     const ca = this.geom.getAttribute("acolor");
     const aa = this.geom.getAttribute("aalpha");
     const runs = coalesceRuns(indices);
@@ -511,6 +526,7 @@ export class Viewer {
   // threshold tuning). With the octree: only nodes whose screen bound overlaps
   // the cursor are visited; without it: projects every point once per click.
   pick(clientX, clientY) {
+    if (!this.geom) return -1;
     const rect = this.renderer.domElement.getBoundingClientRect();
     const mx = clientX - rect.left, my = clientY - rect.top;
     const w = rect.width, h = rect.height;
@@ -546,6 +562,7 @@ export class Viewer {
 
   // Indices of visible points inside a screen rectangle (CSS px relative to viewport).
   pickBox(x0, y0, x1, y1) {
+    if (!this.geom) return [];
     const rect = this.renderer.domElement.getBoundingClientRect();
     const lo = [Math.min(x0, x1), Math.min(y0, y1)];
     const hi = [Math.max(x0, x1), Math.max(y0, y1)];
@@ -581,8 +598,10 @@ export class Viewer {
   }
 
   frame() {
+    if (!this.geom) return;
     this.geom.computeBoundingSphere();
     const s = this.geom.boundingSphere;
+    if (!s || !Number.isFinite(s.radius) || s.radius <= 0) return; // empty cloud
     this._radius = s.radius;
     this.controls.target.copy(s.center);
     // 3/4 aerial view for a Z-up scene (above, and to the side). Tumbling and
@@ -623,6 +642,28 @@ export class Viewer {
     cam.lookAt(target);
     this.controls.update();
     this._requestRender();
+  }
+
+  // Tear down everything the viewer attached outside its own object graph:
+  // window listeners, the octree worker, GPU resources, the canvas. For hosts
+  // that create and destroy viewers (the engine embedded in another app) —
+  // the single-viewer toaster page never needs it.
+  dispose() {
+    for (const [type, fn] of Object.entries(this._winHandlers)) window.removeEventListener(type, fn);
+    if (this._octreeWorker) {
+      this._octreeWorker.terminate();
+      this._octreeWorker = null;
+    }
+    this.controls.dispose();
+    if (this.points) this.scene.remove(this.points);
+    if (this.geom) this.geom.dispose();
+    this.material.dispose();
+    this.setHighlight(null);
+    this.clearVoxelGrid();
+    this.grid.dispose();
+    this.orbitIndicator.dispose();
+    this.renderer.dispose();
+    this.renderer.domElement.remove();
   }
 
   _aspect() {

@@ -133,6 +133,7 @@ const SIZE = 0.03;
 // how much of it shows tells you how deep the pivot sits in the scene.
 export class OrbitIndicator {
   constructor(scene) {
+    this.scene = scene;
     const geom = new THREE.BufferGeometry();
     geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6 * 3), 3));
     geom.setDrawRange(0, 6);
@@ -192,5 +193,11 @@ export class OrbitIndicator {
       this.lines.geometry.attributes.position.needsUpdate = true;
     }
     return { active: true, dirty: true };
+  }
+
+  dispose() {
+    this.scene.remove(this.lines);
+    this.lines.geometry.dispose();
+    this.lines.material.dispose();
   }
 }

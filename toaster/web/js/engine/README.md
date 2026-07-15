@@ -42,6 +42,10 @@ viewer.setControlStyle("trackball"|"orbit"); // free tumble vs upright orbit
 viewer.setBoxMode(bool);                // frees LEFT for a rubber band
 viewer.setHighlight(indices, xyz); viewer.setVoxelGrid(centers, size);
 viewer.rotateView("roll"|"pitch"|"yaw", radians); viewer.worldUp();
+viewer.requestRender();                 // after mutating camera/scene directly
+viewer.resize();                        // from a ResizeObserver, for non-window resizes
+viewer.flyGate = () => bool;            // gate fly keys (multi-viewer hosts: hovered only)
+new Viewer(el, {lodBudget: 350000});    // motion-LOD budget override
 viewer.dispose();                       // detach window listeners, free GPU + worker
 ```
 

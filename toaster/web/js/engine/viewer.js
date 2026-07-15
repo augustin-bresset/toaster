@@ -112,8 +112,15 @@ const FRAG = `
   }`;
 
 export class Viewer {
-  constructor(container) {
+  // opts:
+  // - lodBudget: points drawn during camera motion (default 1M). Streaming
+  //   hosts with tighter frame budgets pass a smaller one.
+  constructor(container, { lodBudget = LOD_BUDGET } = {}) {
     this.container = container;
+    this.lodBudget = lodBudget;
+    // Hosts embedding several viewers set this to gate fly input to the
+    // hovered one (e.g. () => hovered); null = fly is always armed.
+    this.flyGate = null;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x1f2430);
     this.camera = new THREE.PerspectiveCamera(55, this._aspect(), 0.01, 100000);
@@ -259,6 +266,12 @@ export class Viewer {
     this._requestRender();
   }
 
+  // Public: hosts that move the camera or mutate the scene directly (follow
+  // modes, extra objects) call this to get a frame drawn.
+  requestRender() {
+    this._requestRender();
+  }
+
   // Mark the view dirty and make sure a frame is scheduled to draw it.
   _requestRender() {
     this._dirty = true;
@@ -291,7 +304,7 @@ export class Viewer {
     this._lodIndex = null;
     this._octree = null;
     this._drawAttr = null;
-    this._motionLod = n > LOD_BUDGET;
+    this._motionLod = n > this.lodBudget;
     if (this._octreeWorker) {
       this._octreeWorker.terminate();
       this._octreeWorker = null;
@@ -302,13 +315,13 @@ export class Viewer {
       // This is only the stopgap for the second or two the octree takes to build.
       const idx = new Uint32Array(n);
       for (let i = 0; i < n; i++) idx[i] = i;
-      for (let i = 0; i < LOD_BUDGET; i++) {
+      for (let i = 0; i < this.lodBudget; i++) {
         const j = i + Math.floor(Math.random() * (n - i));
         const t = idx[i];
         idx[i] = idx[j];
         idx[j] = t;
       }
-      this._lodIndex = new THREE.BufferAttribute(idx.slice(0, LOD_BUDGET), 1);
+      this._lodIndex = new THREE.BufferAttribute(idx.slice(0, this.lodBudget), 1);
     }
     if (octree && n > OCTREE_MIN_POINTS) this._buildOctree(xyz, n);
     this.points = new THREE.Points(this.geom, this.material);
@@ -454,6 +467,7 @@ export class Viewer {
     this._shiftDown = e.shiftKey;
     if (!["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE"].includes(e.code)) return;
     if (down) {
+      if (this.flyGate && !this.flyGate()) return; // e.g. another panel is hovered
       // Chorded shortcuts are not fly input: on AZERTY, Ctrl+Z (undo) is the
       // physical KeyW — without this guard every undo lurched the camera forward.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -579,7 +593,7 @@ export class Viewer {
       // The cut writes into one preallocated index attribute. Capacity: the
       // budget plus one worst-case node (traversal stops *after* the node that
       // crosses the budget), clamped to the cloud itself.
-      const capacity = Math.min(n, LOD_BUDGET + 16384);
+      const capacity = Math.min(n, this.lodBudget + 16384);
       this._drawAttr = new THREE.BufferAttribute(new Uint32Array(capacity), 1);
       this._drawAttr.setUsage(THREE.DynamicDrawUsage);
       console.log(`octree: ${this._octree.nodeCount} nodes over ${n} points in ${e.data.buildMs} ms`);
@@ -760,6 +774,11 @@ export class Viewer {
 
   _aspect() {
     return this.container.clientWidth / Math.max(1, this.container.clientHeight);
+  }
+  // Public: hosts whose container resizes without a window resize (panel
+  // splitters, workspace layouts) call this from their own ResizeObserver.
+  resize() {
+    this._resize();
   }
   _resize() {
     this.camera.aspect = this._aspect();

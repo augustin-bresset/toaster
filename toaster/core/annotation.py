@@ -94,7 +94,14 @@ class AnnotationController:
     ) -> None:
         self.cloud = cloud
         self.history = history if history is not None else EditHistory()
-        self._labels = cloud.ensure_labels(unlabeled_id)
+        cloud.ensure_labels(unlabeled_id)
+
+    @property
+    def _labels(self) -> np.ndarray:
+        # Always read through the cloud: anything that swaps the array wholesale
+        # (e.g. resuming a previous session's labels) must not leave this
+        # controller writing into the orphaned old array.
+        return self.cloud.labels
 
     def assign(self, selection: Selection, class_id: int) -> np.ndarray:
         """Write ``class_id`` to every selected point; return the touched indices.

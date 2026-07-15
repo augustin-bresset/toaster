@@ -50,3 +50,14 @@ def test_new_edit_clears_redo():
     ann.undo()
     ann.assign(Selection.from_indices([1], 6), 2)
     assert ann.redo() is None  # redo stack was cleared by the new edit
+
+
+def test_assign_survives_a_wholesale_labels_swap():
+    # Resuming a previous session replaces cloud.labels with a fresh array;
+    # the controller must write into the new one, not a cached reference to
+    # the old (the "labelling silently does nothing after resume" bug).
+    cloud = _cloud()
+    ann = AnnotationController(cloud)
+    cloud.labels = np.array([7, 7, 0, 0, 0, 0], np.int32)
+    ann.assign(Selection.from_indices([2], 6), class_id=5)
+    assert cloud.labels.tolist() == [7, 7, 5, 0, 0, 0]

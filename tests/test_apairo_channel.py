@@ -286,3 +286,26 @@ def test_apairo_info_false_for_loose_cloud(tmp_path):
     svc = AnnotationService()
     svc.open_cloud(str(path))
     assert svc.apairo_info()["is_apairo"] is False
+
+
+def test_assign_after_resume_reaches_the_resumed_labels(tmp_path):
+    # Resume replaces cloud.labels wholesale; a later assign must land in the
+    # resumed array (regression: the controller kept writing into the
+    # pre-resume array, so labelling after a resume silently did nothing).
+    from toaster.api.service import AnnotationService
+
+    seq = _apairo_seq(tmp_path)
+    frame = seq / "ouster_points" / "000000.npy"
+    np.save(frame, np.zeros((4, 4), np.float32))
+    gt = seq / "ground_truth"
+    gt.mkdir()
+    np.save(gt / "000000.npy", np.array([1, 1, 0, 0], np.int32))
+
+    svc = AnnotationService()
+    svc.open_cloud(str(frame))
+    assert svc.apairo_resume_info()["available"] is True
+    svc.resume_apairo()
+    assert not svc._ctl().session.history.can_undo()  # pre-resume edits dropped
+    svc.box([2])
+    svc.assign(class_id=5)
+    assert svc._ctl().label_array().tolist() == [1, 1, 5, 0]

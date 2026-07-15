@@ -368,6 +368,10 @@ class AnnotationService:
                 f"'{channel}' frame {target.stem} has {full.shape[0]} labels, expected {expected}"
             )
         cloud.labels = cloud.from_source_frame(full)
+        # The resume replaced the labels wholesale: edits recorded before it
+        # refer to values from the pre-resume array — undoing across the swap
+        # would splice stale values into the resumed labels.
+        session.history.clear()
         return self.state()
 
     def apairo_nav(self) -> dict[str, Any]:

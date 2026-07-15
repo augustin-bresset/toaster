@@ -25,6 +25,27 @@ const OCTREE_MIN_POINTS = 200_000;
 // pixels — below it, the node's own sample is already ~1 point per pixel.
 const OCTREE_SPLIT_PX = 110;
 
+// Sort a delta's indices and merge them into [start, count] runs, bridging
+// gaps below 512 slots (uploading a few unchanged points is cheaper than
+// another bufferSubData call). Returns null when the result is still too
+// fragmented — the caller should full-upload instead.
+function coalesceRuns(indices) {
+  if (indices.length === 0) return [];
+  const sorted = Uint32Array.from(indices).sort();
+  const runs = [];
+  let start = sorted[0], prev = sorted[0];
+  for (let k = 1; k < sorted.length; k++) {
+    const v = sorted[k];
+    if (v - prev > 512) {
+      runs.push([start, prev - start + 1]);
+      start = v;
+    }
+    prev = v;
+  }
+  runs.push([start, prev - start + 1]);
+  return runs.length > 64 ? null : runs;
+}
+
 const VERT = `
   attribute vec3 acolor;
   attribute float aalpha;
@@ -247,6 +268,36 @@ export class Viewer {
     ca.needsUpdate = true;
     const aa = this.geom.getAttribute("aalpha");
     aa.array.set(alpha);
+    aa.needsUpdate = true;
+    this._requestRender();
+  }
+
+  // The live GPU-side arrays, for in-place patching by the delta recolour.
+  // Write into them, then call commitColors with the touched indices.
+  colorArrays() {
+    return {
+      colors: this.geom.getAttribute("acolor").array,
+      alpha: this.geom.getAttribute("aalpha").array,
+    };
+  }
+
+  // Upload only what a label delta touched: the indices are coalesced into a
+  // few contiguous ranges (lidar points arrive in scan order, so a labelled
+  // cluster is usually index-local too). Falls back to a full upload when the
+  // edit is too scattered for ranged updates to win.
+  commitColors(indices) {
+    const ca = this.geom.getAttribute("acolor");
+    const aa = this.geom.getAttribute("aalpha");
+    const runs = coalesceRuns(indices);
+    if (runs && ca.addUpdateRange) {
+      ca.clearUpdateRanges();
+      aa.clearUpdateRanges();
+      for (const [start, count] of runs) {
+        ca.addUpdateRange(start * 3, count * 3);
+        aa.addUpdateRange(start, count);
+      }
+    }
+    ca.needsUpdate = true;
     aa.needsUpdate = true;
     this._requestRender();
   }

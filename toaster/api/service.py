@@ -165,16 +165,32 @@ class AnnotationService:
         features = {k: encode_array(v) for k, v in ctl.session.cloud.features.items()}
         return {"xyz": encode_array(ctl.cloud_xyz()), "features": features}
 
-    def state(self) -> dict[str, Any]:
-        """Everything the client needs to (re)colour: snapshot + bulk arrays."""
+    def state(self, touched: np.ndarray | None = None) -> dict[str, Any]:
+        """Everything the client needs to (re)colour: snapshot + bulk arrays.
+
+        With ``touched`` (the indices a label edit wrote), the full label and
+        grouping arrays are replaced by ``labels_delta`` — just those indices
+        and their new values — so labelling stays O(edit), not O(cloud), on
+        the wire and in the client's recolour.
+        """
         ctl = self._ctl()
-        grouping = ctl.grouping_array()
-        return {
+        base = {
             "snapshot": asdict(ctl.snapshot()),
-            "labels": encode_array(ctl.label_array()),
-            "grouping": encode_array(grouping) if grouping is not None else None,
             # int32 so it maps to a JS Int32Array (int64 has no plain TypedArray).
             "selection": encode_array(ctl.selection_indices().astype(np.int32)),
+        }
+        if touched is not None:
+            labels = ctl.label_array()
+            return base | {
+                "labels_delta": {
+                    "indices": encode_array(touched.astype(np.int32, copy=False)),
+                    "values": encode_array(labels[touched].astype(np.int32, copy=False)),
+                },
+            }
+        grouping = ctl.grouping_array()
+        return base | {
+            "labels": encode_array(ctl.label_array()),
+            "grouping": encode_array(grouping) if grouping is not None else None,
         }
 
     # -- commands ---------------------------------------------------------
@@ -188,8 +204,7 @@ class AnnotationService:
         return self.state()
 
     def assign(self, class_id: int | None = None) -> dict[str, Any]:
-        self._ctl().assign(class_id)
-        return self.state()
+        return self.state(touched=self._ctl().assign(class_id))
 
     def set_active_class(self, class_id: int) -> dict[str, Any]:
         self._ctl().set_active_class(class_id)
@@ -200,12 +215,10 @@ class AnnotationService:
         return self.state()
 
     def undo(self) -> dict[str, Any]:
-        self._ctl().undo()
-        return self.state()
+        return self.state(touched=self._ctl().undo())
 
     def redo(self) -> dict[str, Any]:
-        self._ctl().redo()
-        return self.state()
+        return self.state(touched=self._ctl().redo())
 
     def clear_selection(self) -> dict[str, Any]:
         self._ctl().clear_selection()
@@ -242,16 +255,13 @@ class AnnotationService:
         return self.state()
 
     def assign_group(self, group_id: int, class_id: int | None = None) -> dict[str, Any]:
-        self._ctl().assign_group(group_id, class_id)
-        return self.state()
+        return self.state(touched=self._ctl().assign_group(group_id, class_id))
 
     def apply_suggested(self, group_id: int | None = None) -> dict[str, Any]:
-        self._ctl().apply_suggested(group_id)
-        return self.state()
+        return self.state(touched=self._ctl().apply_suggested(group_id))
 
     def assign_visible_groups(self, class_id: int | None = None) -> dict[str, Any]:
-        self._ctl().assign_visible_groups(class_id)
-        return self.state()
+        return self.state(touched=self._ctl().assign_visible_groups(class_id))
 
     def set_group_visibility(self, group_id: int, visible: bool) -> dict[str, Any]:
         self._ctl().set_group_visibility(group_id, visible)

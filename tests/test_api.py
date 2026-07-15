@@ -62,9 +62,13 @@ def test_segment_then_assign_group(client):
     sel = client.post("/api/group/select", json={"group_id": gid}).json()
     assert decode_array(sel["selection"]).size == snap["segments"][0]["count"]
 
-    # Label that segment with class 4.
+    # Label that segment with class 4 — the response is a delta, not full labels.
     after = client.post("/api/group/assign", json={"group_id": gid, "class_id": 4}).json()
-    labels = decode_array(after["labels"])
+    delta = after["labels_delta"]
+    assert decode_array(delta["indices"]).size == snap["segments"][0]["count"]
+    assert (decode_array(delta["values"]) == 4).all()
+    # The full state still reflects the write.
+    labels = decode_array(client.get("/api/state").json()["labels"])
     assert int((labels == 4).sum()) == snap["segments"][0]["count"]
 
 
@@ -88,8 +92,11 @@ def test_assign_visible_groups_endpoint(client):
     # Uncheck one segment, then assign class 3 to the visible (checked) ones.
     client.post("/api/group/visibility", json={"group_id": hide["id"], "visible": False})
     after = client.post("/api/groups/assign_visible", json={"class_id": 3}).json()
-    labels = decode_array(after["labels"])
+    delta = after["labels_delta"]
     # Exactly the visible segment's points became class 3; the hidden one did not.
+    assert decode_array(delta["indices"]).size == sum(s["count"] for s in segs if s["id"] != hide["id"])
+    assert (decode_array(delta["values"]) == 3).all()
+    labels = decode_array(client.get("/api/state").json()["labels"])
     assert int((labels == 3).sum()) == sum(s["count"] for s in segs if s["id"] != hide["id"])
 
 
@@ -126,9 +133,12 @@ def test_pick_assign_undo(client):
     client.post("/api/active_class", json={"class_id": 2})
     client.post("/api/pick", json={"index": 5})
     after = client.post("/api/assign", json={}).json()
-    assert decode_array(after["labels"])[5] == 2
+    assert decode_array(after["labels_delta"]["indices"]).tolist() == [5]
+    assert decode_array(after["labels_delta"]["values"]).tolist() == [2]
     back = client.post("/api/undo").json()
-    assert decode_array(back["labels"])[5] == 0
+    assert decode_array(back["labels_delta"]["indices"]).tolist() == [5]
+    assert decode_array(back["labels_delta"]["values"]).tolist() == [0]
+    assert decode_array(client.get("/api/state").json()["labels"])[5] == 0
 
 
 def test_browse_lists_dir_and_flags_openable(client, tmp_path):

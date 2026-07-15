@@ -2,12 +2,24 @@
 // wire interactions to the API, and re-render from each returned state.
 
 import { api, decodeArray } from "./api.js";
-import { computeColors } from "./colors.js";
+import { computeColors, makeLabelColorizer } from "./colors.js";
 import { Viewer } from "./viewer.js";
 
 const el = (id) => document.getElementById(id);
 const viewer = new Viewer(el("viewport"));
-window.__toaster = { viewer }; // debug / headless-test handle (module scope is unreachable from outside)
+// Debug / headless-test handle (module scope is unreachable from outside).
+// `refresh` re-pulls the full state and re-renders from scratch — the tests
+// use it as the reference the delta path must be indistinguishable from.
+window.__toaster = {
+  viewer,
+  debug: {
+    getState: () => state,
+    getCloud: () => cloud,
+    computeColors,
+    api,
+    refresh: async () => applyState(await api.state()),
+  },
+};
 
 let cloud = { xyz: null, features: {} };
 let state = null; // decoded { snapshot, labels, grouping, selection }
@@ -29,7 +41,7 @@ let voxel = { size: 0.5, showEmpty: false, map: null, centers: new Float32Array(
 const VOXEL_GRID_CAP = 30000; // max cubes to draw / cells to enumerate
 // The one point-visibility mask (class eyes ∧ hide-labelled ∧ isolate) — purely
 // client-side, applied on top of the colours the semantic state produces.
-const vis = { hideLabeled: false, hiddenClasses: new Set(), isolate: false };
+const vis = { hideLabeled: false, hiddenClasses: new Set(), isolate: false, hiddenCount: 0 };
 
 // -- themes ------------------------------------------------------------------
 
@@ -563,6 +575,10 @@ async function doSave() {
 }
 
 function applyState(raw) {
+  // Label edits (assign / undo / redo / group assigns) come back as a delta —
+  // just the touched indices and values — so applying them stays O(edit)
+  // whatever the cloud size. Everything else carries the full arrays.
+  if (raw.labels_delta && state && cloud.xyz) return applyDelta(raw);
   state = {
     snapshot: raw.snapshot,
     labels: decodeArray(raw.labels),
@@ -571,6 +587,29 @@ function applyState(raw) {
   };
   if (state.selection.length === 0) vis.isolate = false; // isolate is armed per-selection
   refreshColors();
+  finishStateRender();
+}
+
+function applyDelta(raw) {
+  const indices = decodeArray(raw.labels_delta.indices);
+  const values = decodeArray(raw.labels_delta.values);
+  const oldSelection = state.selection;
+  const wasIsolate = vis.isolate && oldSelection.length > 0;
+  state.snapshot = raw.snapshot;
+  state.selection = decodeArray(raw.selection);
+  for (let k = 0; k < indices.length; k++) state.labels[indices[k]] = values[k];
+  if (state.selection.length === 0) vis.isolate = false;
+
+  // Isolate couples every point's alpha to the selection as a whole — a
+  // selection change under isolate is a wholesale visibility change, not a
+  // delta. Rare enough to just recompute fully.
+  if (wasIsolate || (vis.isolate && state.selection.length > 0)) refreshColors();
+  else patchColors(indices, oldSelection);
+  finishStateRender();
+}
+
+// The panel/status re-render both state paths share.
+function finishStateRender() {
   viewer.setHighlight(state.selection, cloud.xyz);
   renderClasses();
   renderModes();
@@ -579,6 +618,44 @@ function applyState(raw) {
   const s = state.snapshot;
   el("status").textContent =
     `Sel: ${state.selection.length.toLocaleString()} · Class: ${className(s.active_class)} · View: ${s.display_mode}`;
+}
+
+// Delta recolour: rewrite only the touched points' colours in the live GPU
+// arrays, re-evaluate visibility for the points it can have changed on (the
+// touched points, plus both selections — selected points are force-visible,
+// so selection churn shows/hides them), and upload just those ranges.
+function patchColors(touched, oldSelection) {
+  const { colors, alpha } = viewer.colorArrays();
+  const colorize = makeLabelColorizer(state, cloud);
+  if (colorize) for (let k = 0; k < touched.length; k++) colorize(colors, touched[k]);
+
+  if (vis.hideLabeled || vis.hiddenClasses.size > 0) {
+    const labels = state.labels;
+    const unlabeled = state.snapshot.unlabeled_id;
+    const selected = new Set(state.selection);
+    // Idempotent per point, so overlap between the three sets double-counts
+    // nothing: the second visit sees before === after.
+    const reapply = (i) => {
+      const before = alpha[i];
+      const masked =
+        (vis.hideLabeled && labels[i] !== unlabeled) || vis.hiddenClasses.has(labels[i]);
+      const after = masked && !selected.has(i) ? 0 : 1;
+      alpha[i] = after;
+      vis.hiddenCount += (after === 0 ? 1 : 0) - (before === 0 ? 1 : 0);
+    };
+    for (let k = 0; k < touched.length; k++) reapply(touched[k]);
+    for (let k = 0; k < oldSelection.length; k++) reapply(oldSelection[k]);
+    for (let k = 0; k < state.selection.length; k++) reapply(state.selection[k]);
+    renderVisPill(vis.hiddenCount);
+  }
+
+  // Selection points' alpha may have changed even when nothing is "touched"
+  // colour-wise — commit the union.
+  const union = new Uint32Array(touched.length + oldSelection.length + state.selection.length);
+  union.set(touched, 0);
+  union.set(oldSelection, touched.length);
+  union.set(state.selection, touched.length + oldSelection.length);
+  viewer.commitColors(union);
 }
 
 // -- point visibility ---------------------------------------------------------
@@ -617,6 +694,7 @@ function applyVisibility(alpha) {
       }
     }
   }
+  vis.hiddenCount = hidden; // the delta path adjusts this incrementally
   renderVisPill(hidden);
 }
 

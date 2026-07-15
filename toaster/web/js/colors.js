@@ -37,15 +37,16 @@ function turbo(t) {
 }
 
 // decoded: { snapshot, labels:Int32Array, grouping:Int32Array|null }
-// cloud:   { xyz:Float32Array, features:{ intensity?:Float32Array } }
-export function computeColors(decoded, cloud) {
+// Per-point colour writer for the label-dependent display modes, or null when
+// the current mode's colours can't be changed by a label edit (intensity /
+// height ramps). This is the single source of the per-point rules: the full
+// recompute below and the delta recolour in app.js both call it, so they can
+// never drift apart.
+// decoded: { snapshot, labels:Int32Array, grouping:Int32Array|null }
+export function makeLabelColorizer(decoded, cloud) {
   const snap = decoded.snapshot;
   const labels = decoded.labels;
   const grouping = decoded.grouping;
-  const n = labels.length;
-  const colors = new Float32Array(n * 3);
-  const alpha = new Float32Array(n).fill(1); // every point stays visible & pickable
-
   const mode = snap.display_mode;
   if (mode === "grouping" && grouping) {
     // Segments toggled off (Hide all / Solo / a row's checkbox) are not removed —
@@ -56,22 +57,36 @@ export function computeColors(decoded, cloud) {
     const lut = {};
     for (const c of snap.classes) lut[c.id] = c.color;
     const unlabeled = snap.unlabeled_id;
-    for (let i = 0; i < n; i++) {
+    return (colors, i) => {
       const g = grouping[i];
       if (!hidden.has(g)) setRGB(colors, i, g < 0 ? NOISE : GROUP_PALETTE[g % GROUP_PALETTE.length]);
       else if (labels[i] !== unlabeled) setRGB(colors, i, lut[labels[i]] || DIM);
       else setRGB(colors, i, DIM);
-    }
-  } else if (mode === "intensity" && cloud.features.intensity) {
-    rampInto(colors, cloud.features.intensity);
-  } else if (mode === "height") {
+    };
+  }
+  // Same fall-through as the full recompute: "intensity" without the feature
+  // renders as labels, so it *does* depend on them.
+  if ((mode === "intensity" && cloud.features.intensity) || mode === "height") return null;
+  const lut = {};
+  for (const c of snap.classes) lut[c.id] = c.color;
+  return (colors, i) => setRGB(colors, i, lut[labels[i]] || UNKNOWN);
+}
+
+// cloud:   { xyz:Float32Array, features:{ intensity?:Float32Array } }
+export function computeColors(decoded, cloud) {
+  const n = decoded.labels.length;
+  const colors = new Float32Array(n * 3);
+  const alpha = new Float32Array(n).fill(1); // every point stays visible & pickable
+
+  const colorize = makeLabelColorizer(decoded, cloud);
+  if (colorize) {
+    for (let i = 0; i < n; i++) colorize(colors, i);
+  } else if (decoded.snapshot.display_mode === "height") {
     const z = new Float32Array(n);
     for (let i = 0; i < n; i++) z[i] = cloud.xyz[i * 3 + 2];
     rampInto(colors, z);
   } else {
-    const lut = {};
-    for (const c of snap.classes) lut[c.id] = c.color;
-    for (let i = 0; i < n; i++) setRGB(colors, i, lut[labels[i]] || UNKNOWN);
+    rampInto(colors, cloud.features.intensity);
   }
   return { colors, alpha };
 }

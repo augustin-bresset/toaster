@@ -127,8 +127,8 @@ def test_assign_group_labels_the_segment(two_clusters, schema):
     viewer = FakeViewer()
     ctl = InteractionController(session, viewer)
     ctl.set_active_class(1)
-    n = ctl.assign_group(0)
-    assert n == 50
+    touched = ctl.assign_group(0)
+    assert touched.size == 50
     assert (session.cloud.labels[:50] == 1).all()
     assert (session.cloud.labels[50:] == 0).all()
     assert viewer.recolored  # labelled points are repainted in any view
@@ -138,23 +138,23 @@ def test_apply_suggested_single_and_all(two_clusters, schema):
     session = _grouped_session(two_clusters, schema)
     ctl = InteractionController(session, FakeViewer())
     # Only group 1 carries a suggestion (-> class 2).
-    n = ctl.apply_suggested(1)
-    assert n == 50
+    touched = ctl.apply_suggested(1)
+    assert touched.size == 50
     assert (session.cloud.labels[50:] == 2).all()
     # Group 0 has no suggestion -> no-op.
-    assert ctl.apply_suggested(0) == 0
+    assert ctl.apply_suggested(0).size == 0
     # "All suggested" applies every group that has one.
     session2 = _grouped_session(two_clusters, schema)
     ctl2 = InteractionController(session2, FakeViewer())
-    assert ctl2.apply_suggested(None) == 50
+    assert ctl2.apply_suggested(None).size == 50
 
 
 def test_group_ops_noop_without_active_grouping(two_clusters, schema):
     two_clusters.ensure_labels(schema.unlabeled_id)
     session = Session(two_clusters, schema)  # no grouping
     ctl = InteractionController(session, FakeViewer())
-    assert ctl.assign_group(0) == 0
-    assert ctl.apply_suggested() == 0
+    assert ctl.assign_group(0).size == 0
+    assert ctl.apply_suggested().size == 0
 
 
 def test_group_visibility_commands(two_clusters, schema):
@@ -187,9 +187,9 @@ def test_assign_visible_groups_labels_only_checked(two_clusters, schema):
     # Uncheck (hide) group 0, then assign -> only the visible group 1 is labelled.
     ctl.set_group_visibility(0, False)
     ctl.set_active_class(2)
-    n = ctl.assign_visible_groups()
+    touched = ctl.assign_visible_groups()
     labels = session.cloud.labels
-    assert n == 50
+    assert touched.size == 50
     assert (labels[:50] == schema.unlabeled_id).all()  # hidden group untouched
     assert (labels[50:] == 2).all()  # checked group labelled
 
@@ -204,7 +204,7 @@ def test_clear_grouping_discards_segmentation_keeps_labels(two_clusters, schema)
     ctl.set_display_mode("grouping")
     # Label a segment first — its labels must survive the grouping being dropped.
     labelled = ctl.assign_group(0, 1)
-    assert labelled == 50
+    assert labelled.size == 50
 
     ctl.clear_grouping()
     assert session.active_grouping is None

@@ -128,25 +128,34 @@ class InteractionController:
         self.session.active_class = class_id
         self._changed()
 
-    def assign(self, class_id: int | None = None) -> None:
-        """Write the active (or given) class to the current selection."""
+    def assign(self, class_id: int | None = None) -> np.ndarray:
+        """Write the active (or given) class to the current selection.
+
+        Returns the touched indices, so a remote front-end can patch labels and
+        colours in place instead of re-reading the full arrays.
+        """
         cid = self.session.active_class if class_id is None else class_id
         touched = self.session.annotation.assign(self.session.selection, cid)
         if touched.size:
             self._recolor_labels(touched)
         self.clear_selection()
+        return touched
 
-    def undo(self) -> None:
+    def undo(self) -> np.ndarray:
+        """Revert the last edit; returns the touched indices (empty if nothing)."""
         touched = self.session.annotation.undo()
         if touched is not None:
             self._recolor_labels(touched)
             self._changed()
+        return touched if touched is not None else np.empty(0, dtype=np.int64)
 
-    def redo(self) -> None:
+    def redo(self) -> np.ndarray:
+        """Re-apply the last undone edit; returns the touched indices (empty if nothing)."""
         touched = self.session.annotation.redo()
         if touched is not None:
             self._recolor_labels(touched)
             self._changed()
+        return touched if touched is not None else np.empty(0, dtype=np.int64)
 
     def _recolor_labels(self, indices: np.ndarray) -> None:
         # Only meaningful while showing labels; other modes recolour on switch.
@@ -190,27 +199,27 @@ class InteractionController:
             return
         self._apply_selection(Selection.from_group(grouping, group_id), modifiers)
 
-    def assign_group(self, group_id: int, class_id: int | None = None) -> int:
-        """Label a whole segment with the active (or given) class. Returns points labelled."""
+    def assign_group(self, group_id: int, class_id: int | None = None) -> np.ndarray:
+        """Label a whole segment with the active (or given) class. Returns touched indices."""
         grouping = self.session.active_grouping
         if grouping is None:
-            return 0
+            return np.empty(0, dtype=np.int64)
         cid = self.session.active_class if class_id is None else class_id
         touched = self.session.annotation.assign(Selection.from_group(grouping, group_id), cid)
         if touched.size:
             self._paint_labels(touched)
         self._changed()
-        return int(touched.size)
+        return touched
 
-    def assign_visible_groups(self, class_id: int | None = None) -> int:
+    def assign_visible_groups(self, class_id: int | None = None) -> np.ndarray:
         """Label every currently-visible (checked) segment with the active/given class.
 
         Hidden (unchecked, greyed) segments are skipped. The whole batch is one
-        undoable edit. Returns the number of points labelled.
+        undoable edit. Returns the touched indices.
         """
         grouping = self.session.active_grouping
         if grouping is None:
-            return 0
+            return np.empty(0, dtype=np.int64)
         cid = self.session.active_class if class_id is None else class_id
         sel = Selection.empty(self.session.cloud.n)
         for g in grouping.group_ids():
@@ -220,30 +229,30 @@ class InteractionController:
         if touched.size:
             self._paint_labels(touched)
         self._changed()
-        return int(touched.size)
+        return touched
 
-    def apply_suggested(self, group_id: int | None = None) -> int:
+    def apply_suggested(self, group_id: int | None = None) -> np.ndarray:
         """Accept model predictions: label group(s) with their ``suggested_labels``.
 
         With ``group_id`` set, only that segment; otherwise every segment that
-        carries a suggestion. Returns the number of points labelled.
+        carries a suggestion. Returns the touched indices across all of them.
         """
         grouping = self.session.active_grouping
         if grouping is None or not grouping.suggested_labels:
-            return 0
+            return np.empty(0, dtype=np.int64)
         if group_id is not None:
             suggestion = grouping.suggested_labels.get(group_id)
             items = [(group_id, suggestion)] if suggestion is not None else []
         else:
             items = list(grouping.suggested_labels.items())
-        total = 0
+        all_touched: list[np.ndarray] = []
         for gid, cid in items:
             touched = self.session.annotation.assign(Selection.from_group(grouping, gid), cid)
             if touched.size:
                 self._paint_labels(touched)
-                total += int(touched.size)
+                all_touched.append(touched)
         self._changed()
-        return total
+        return np.concatenate(all_touched) if all_touched else np.empty(0, dtype=np.int64)
 
     def _paint_labels(self, indices: np.ndarray) -> None:
         # Recolour assigned points to their class colour in *any* view, so a

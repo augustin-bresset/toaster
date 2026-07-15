@@ -94,7 +94,8 @@ def test_assign_visible_groups_endpoint(client):
     after = client.post("/api/groups/assign_visible", json={"class_id": 3}).json()
     delta = after["labels_delta"]
     # Exactly the visible segment's points became class 3; the hidden one did not.
-    assert decode_array(delta["indices"]).size == sum(s["count"] for s in segs if s["id"] != hide["id"])
+    visible_count = sum(s["count"] for s in segs if s["id"] != hide["id"])
+    assert decode_array(delta["indices"]).size == visible_count
     assert (decode_array(delta["values"]) == 3).all()
     labels = decode_array(client.get("/api/state").json()["labels"])
     assert int((labels == 3).sum()) == sum(s["count"] for s in segs if s["id"] != hide["id"])

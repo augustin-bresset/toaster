@@ -3,7 +3,7 @@
 
 import { api, decodeArray } from "./api.js";
 import { computeColors, makeLabelColorizer } from "./colors.js";
-import { Viewer } from "./viewer.js";
+import { Viewer } from "./engine/viewer.js";
 
 const el = (id) => document.getElementById(id);
 const viewer = new Viewer(el("viewport"));

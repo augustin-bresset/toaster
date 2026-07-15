@@ -82,31 +82,41 @@ def server(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def page(server):
-    """One loaded page (cloud + octree ready) shared by the module's tests."""
+def browser():
     with sync_playwright() as p:
         try:
             browser = p.chromium.launch()
         except Exception as exc:  # no browser installed
             pytest.skip(f"chromium unavailable: {exc}")
-        page = browser.new_page(viewport={"width": 1280, "height": 800})
-        errors: list[str] = []
-        page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
-        page.on(
-            "console",
-            lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None,
-        )
-        page.goto(server)
-        page.wait_for_function(
-            f"window.__toaster && window.__toaster.viewer.geom && "
-            f"window.__toaster.viewer.geom.getAttribute('position').count === {N_POINTS}",
-            timeout=90000,
-        )
-        page.wait_for_function("window.__toaster.viewer._octree !== null", timeout=90000)
-        page._errors = errors
-        yield page
-        assert not errors, f"console/page errors: {errors}"
+        yield browser
         browser.close()
+
+
+@pytest.fixture(scope="module")
+def page(server, browser):
+    """One loaded page (cloud + octree ready) shared by the module's tests."""
+    page = browser.new_page(viewport={"width": 1280, "height": 800})
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    # Headless SwiftShader emits a spurious "VALIDATE_STATUS false" with an
+    # EMPTY info log under multi-context pressure; a real shader break always
+    # carries a compile log, so only the empty-log noise is filtered.
+    page.on(
+        "console",
+        lambda m: errors.append(f"console: {m.text}")
+        if m.type == "error" and not ("VALIDATE_STATUS false" in m.text and "ERROR:" not in m.text)
+        else None,
+    )
+    page.goto(server)
+    page.wait_for_function(
+        f"window.__toaster && window.__toaster.viewer.geom && "
+        f"window.__toaster.viewer.geom.getAttribute('position').count === {N_POINTS}",
+        timeout=90000,
+    )
+    page.wait_for_function("window.__toaster.viewer._octree !== null", timeout=90000)
+    yield page
+    assert not errors, f"console/page errors: {errors}"
+    page.close()
 
 
 def test_octree_is_a_permutation_with_wellformed_slices(page):
@@ -164,6 +174,33 @@ def test_motion_draws_octree_cut_then_idle_refines_full(page):
         time.sleep(0.4)
 
 
+def test_orbit_crosshair_shows_during_motion_and_fades(page):
+    # The rerun-style pivot crosshair: hidden at rest, visible while orbiting,
+    # lingers briefly after release, then fades back out.
+    assert page.evaluate("window.__toaster.viewer.orbitIndicator.lines.visible") is False
+    page.mouse.move(640, 400)
+    page.mouse.down()
+    for i in range(6):
+        page.mouse.move(640 + i * 10, 400 + i * 5, steps=2)
+        time.sleep(0.05)
+    state = page.evaluate(
+        """(() => {
+          const v = window.__toaster.viewer;
+          const pos = v.orbitIndicator.lines.geometry.attributes.position.array;
+          const t = v.controls.target;
+          return {
+            visible: v.orbitIndicator.lines.visible,
+            centred: Math.abs(pos[0] - t.x) < 1e-3 && Math.abs(pos[1] - t.y) < 1e-3,
+          };
+        })()"""
+    )
+    page.mouse.up()
+    assert state["visible"], "crosshair must show while orbiting"
+    assert state["centred"], "crosshair must sit exactly on the orbit pivot"
+    time.sleep(1.0)  # > linger (350ms) + fade (100ms), slow-frame margin
+    assert page.evaluate("window.__toaster.viewer.orbitIndicator.lines.visible") is False
+
+
 def test_octree_picking_matches_brute_force(page):
     out = page.evaluate(
         """(() => {
@@ -196,7 +233,7 @@ def test_delta_recolor_matches_full_rerender(page):
     # colour/alpha buffers against a from-scratch full-state re-render —
     # byte-identical or the delta path has drifted from the reference rules.
     # Drive the real UI: box mode, rubber-band drag, double-click to label.
-    page.click("button[data-mode-pick=box]")
+    page.click("button[data-mode-pick=box]")  # idempotent — asserts the mode, not a toggle
     page.mouse.move(560, 320)
     page.mouse.down()
     page.mouse.move(720, 480, steps=5)
@@ -256,3 +293,100 @@ def test_delta_recolor_matches_full_rerender(page):
     assert out["colorDiff"] == 0, "colours diverged after an undo delta"
     assert out["alphaDiff"] == 0, "alphas diverged after an undo delta"
     page.uncheck("#hide-labeled")
+
+
+def test_delta_upload_matches_full_upload_on_screen(page):
+    # The CPU-array equality above can't see a bad commitColors update range —
+    # a wrong range leaves stale bytes GPU-side only. Render both ways and
+    # compare pixels: delta-patched frame vs the same state fully re-uploaded.
+    page.click("button[data-mode-pick=box]")
+    page.mouse.move(700, 500)
+    page.mouse.down()
+    page.mouse.move(860, 620, steps=5)
+    page.mouse.up()
+    page.wait_for_function(
+        "window.__toaster.debug.getState().selection.length > 0", timeout=15000
+    )
+    page.mouse.dblclick(780, 560)  # delta path
+    page.wait_for_function(
+        "window.__toaster.debug.getState().selection.length === 0", timeout=15000
+    )
+    time.sleep(1.5)  # settle: full-res idle frame with the delta-patched buffers
+    # Clip to the cloud area: the toolbar's neon "buzz" animation (triggered by
+    # the assign) is still pulsing in frame A, and side panels are irrelevant.
+    clip = {"x": 300, "y": 150, "width": 700, "height": 550}
+    a = np.frombuffer(page.screenshot(clip=clip), dtype=np.uint8)
+    page.evaluate("window.__toaster.debug.refresh()")
+    time.sleep(1.5)  # full recompute + full GPU upload, then idle again
+    b = np.frombuffer(page.screenshot(clip=clip), dtype=np.uint8)
+    if a.shape == b.shape and (a == b).all():
+        return  # byte-identical PNGs — perfect
+    # Compare decoded pixels with a tiny tolerance for encoder nondeterminism.
+    import io
+
+    from PIL import Image
+
+    pa = np.asarray(Image.open(io.BytesIO(a.tobytes())).convert("RGB"), dtype=np.int16)
+    pb = np.asarray(Image.open(io.BytesIO(b.tobytes())).convert("RGB"), dtype=np.int16)
+    diff_ratio = float((np.abs(pa - pb).max(axis=2) > 2).mean())
+    assert diff_ratio < 0.001, f"{diff_ratio:.4%} of pixels differ between delta and full upload"
+
+
+def test_isolate_mode_falls_back_to_full_recompute(page):
+    # Isolate couples every point's alpha to the selection — assigning under
+    # isolate must go through the full recompute and still match the reference.
+    page.click("button[data-mode-pick=box]")
+    page.mouse.move(300, 500)
+    page.mouse.down()
+    page.mouse.move(440, 620, steps=5)
+    page.mouse.up()
+    page.wait_for_function(
+        "window.__toaster.debug.getState().selection.length > 0", timeout=15000
+    )
+    page.keyboard.press("i")  # isolate the selection
+    page.mouse.dblclick(370, 560)  # label it (assign clears the selection → isolate disarms)
+    page.wait_for_function(
+        "window.__toaster.debug.getState().selection.length === 0", timeout=15000
+    )
+    out = page.evaluate(
+        """(async () => {
+          const { viewer, debug } = window.__toaster;
+          const live = viewer.colorArrays();
+          const colors = live.colors.slice();
+          const alpha = live.alpha.slice();
+          await debug.refresh();
+          const ref = viewer.colorArrays();
+          let colorDiff = 0, alphaDiff = 0;
+          for (let i = 0; i < colors.length; i++) if (colors[i] !== ref.colors[i]) colorDiff++;
+          for (let i = 0; i < alpha.length; i++) if (alpha[i] !== ref.alpha[i]) alphaDiff++;
+          return { colorDiff, alphaDiff };
+        })()"""
+    )
+    assert out["colorDiff"] == 0, "colours diverged after assigning under isolate"
+    assert out["alphaDiff"] == 0, "alphas diverged after assigning under isolate"
+
+
+def test_viewer_dispose_detaches_cleanly(server, browser):
+    # dispose() is for hosts that embed the engine and tear viewers down —
+    # exercise it on its own page so the shared page fixture stays alive.
+    page = browser.new_page(viewport={"width": 800, "height": 600})
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(server)
+    page.wait_for_function(
+        "window.__toaster && window.__toaster.viewer._octree !== null", timeout=90000
+    )
+    gone = page.evaluate(
+        """(() => {
+          window.__toaster.viewer.dispose();
+          return document.querySelector('#viewport canvas') === null;
+        })()"""
+    )
+    assert gone, "dispose must remove the canvas"
+    # Events that used to hit the viewer's window listeners must be harmless now.
+    page.keyboard.down("w")
+    page.keyboard.up("w")
+    page.mouse.move(400, 300)
+    time.sleep(0.5)
+    assert not errors, f"errors after dispose: {errors}"
+    page.close()

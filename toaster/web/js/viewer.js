@@ -13,6 +13,22 @@ const LOD_BUDGET = 1_000_000;
 // How long after the last camera move the view still counts as "in motion".
 const LOD_SETTLE_MS = 150;
 
+// Orbit-pivot crosshair (rerun-style "what am I centred on" cue): stays fully
+// visible for this long after the last camera move, then fades out — makes the
+// TrackballControls pivot legible instead of an invisible point somewhere in
+// the cloud, which is what made fast tumbling feel disorienting.
+const ORBIT_INDICATOR_LINGER_MS = 350;
+const ORBIT_INDICATOR_FADE_MS = 100;
+// Crosshair half-length as a fraction of the current camera-to-pivot distance,
+// so it reads the same size on screen whether you're framing the whole cloud
+// or zoomed into one corner.
+const ORBIT_INDICATOR_SIZE = 0.03;
+
+function smoothstep(edge0, edge1, x) {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
 const VERT = `
   attribute vec3 acolor;
   attribute float aalpha;
@@ -178,8 +194,12 @@ export class Viewer {
     this._motionUntil = 0;
     this._lodIndex = null; // pre-shuffled draw list, built by setCloud when n > LOD_BUDGET
     this._lodOn = false; // the frame currently on screen was drawn decimated
+    this._orbitIndicatorUntil = 0; // linger deadline; fade-out runs for ORBIT_INDICATOR_FADE_MS past it
+    this._orbitFadeIn = false;
+    this._orbitFadeChangeTime = 0;
     this.controls.addEventListener("change", () => {
       this._motionUntil = performance.now() + LOD_SETTLE_MS;
+      this._orbitIndicatorUntil = performance.now() + ORBIT_INDICATOR_LINGER_MS;
       this._requestRender();
     });
     this.controls.rotateSpeed = 3.0;
@@ -219,6 +239,8 @@ export class Viewer {
       vertexShader: VERT,
       fragmentShader: FRAG,
     });
+
+    this._buildOrbitIndicator();
 
     window.addEventListener("resize", () => this._resize());
     this._requestRender();
@@ -305,6 +327,71 @@ export class Viewer {
     const grid = new THREE.Mesh(geom, material);
     this.scene.add(grid);
     this.grid = grid;
+  }
+
+  // The rerun-style orbit-pivot crosshair: three short segments centred on
+  // controls.target, fixed to world axes (not the camera's, which can roll
+  // freely under TrackballControls) so it also doubles as a "how tilted am I"
+  // reference. Built once; _tickOrbitIndicator() rewrites its 6 vertices and
+  // fades it in/out every frame it's active.
+  _buildOrbitIndicator() {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6 * 3), 3));
+    geom.setDrawRange(0, 6);
+    const material = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.85,
+      // Depth-tested on purpose (like rerun): the cloud occludes the crosshair,
+      // so how much of it shows tells you how deep the pivot sits in the scene.
+      depthWrite: false,
+    });
+    this._orbitIndicator = new THREE.LineSegments(geom, material);
+    this._orbitIndicator.visible = false;
+    this._orbitIndicator.frustumCulled = false; // its extent doesn't track the geometry's bounding sphere
+    this.scene.add(this._orbitIndicator);
+  }
+
+  // Updates and fades the orbit-pivot crosshair for the current frame. Returns
+  // true while it still needs the render loop kept alive (mid-fade or lingering
+  // after the last camera move), false once it's fully settled/hidden.
+  _tickOrbitIndicator(now) {
+    const active = now < this._orbitIndicatorUntil + ORBIT_INDICATOR_FADE_MS;
+    if (!active) {
+      if (this._orbitIndicator.visible) {
+        this._orbitIndicator.visible = false;
+        this._dirty = true;
+      }
+      return false;
+    }
+    const showing = now < this._orbitIndicatorUntil;
+    if (showing !== this._orbitFadeIn) {
+      this._orbitFadeChangeTime = now;
+      this._orbitFadeIn = showing;
+    }
+    const elapsed = now - this._orbitFadeChangeTime;
+    const fade = this._orbitFadeIn
+      ? smoothstep(0, ORBIT_INDICATOR_FADE_MS, elapsed)
+      : smoothstep(ORBIT_INDICATOR_FADE_MS, 0, elapsed);
+
+    this._orbitIndicator.visible = fade > 0.001;
+    if (this._orbitIndicator.visible) {
+      const target = this.controls.target;
+      const half = this.camera.position.distanceTo(target) * ORBIT_INDICATOR_SIZE * fade;
+      const pos = this._orbitIndicator.geometry.attributes.position.array;
+      // Up: half-length, drawn upward only (mirrors rerun — reads as "ground"
+      // without a stray line poking below the pivot). Right/forward: full
+      // length, both ways.
+      pos[0] = target.x; pos[1] = target.y; pos[2] = target.z;
+      pos[3] = target.x; pos[4] = target.y; pos[5] = target.z + half * 0.5;
+      pos[6] = target.x - half; pos[7] = target.y; pos[8] = target.z;
+      pos[9] = target.x + half; pos[10] = target.y; pos[11] = target.z;
+      pos[12] = target.x; pos[13] = target.y - half; pos[14] = target.z;
+      pos[15] = target.x; pos[16] = target.y + half; pos[17] = target.z;
+      this._orbitIndicator.geometry.attributes.position.needsUpdate = true;
+    }
+    this._dirty = true;
+    return true;
   }
 
   setColors(colors, alpha) {
@@ -581,8 +668,9 @@ export class Viewer {
     this._rafPending = false;
     this._fly(this._clock.getDelta());
     this.controls.update(); // fires "change" (→ dirty + motion window) when the camera moved
-    const moving =
-      this._flyKeys.size > 0 || (this._lodIndex && performance.now() < this._motionUntil);
+    const now = performance.now();
+    const moving = this._flyKeys.size > 0 || (this._lodIndex && now < this._motionUntil);
+    const orbitIndicatorActive = this._tickOrbitIndicator(now);
     if (this._dirty) {
       this._dirty = false;
       this._applyLod(moving);
@@ -592,9 +680,11 @@ export class Viewer {
       this._applyLod(false);
       this.renderer.render(this.scene, this.camera);
     }
-    // Keep looping while something can still move the camera, or while a
-    // decimated frame is showing (its full-res refine is still owed); otherwise
-    // the loop dies here and _requestRender()/_schedule() restarts it.
-    if (this._interacting || this._flyKeys.size > 0 || this._dirty || this._lodOn) this._schedule();
+    // Keep looping while something can still move the camera, while a
+    // decimated frame is showing (its full-res refine is still owed), or while
+    // the orbit-pivot crosshair is still lingering/fading; otherwise the loop
+    // dies here and _requestRender()/_schedule() restarts it.
+    if (this._interacting || this._flyKeys.size > 0 || this._dirty || this._lodOn || orbitIndicatorActive)
+      this._schedule();
   }
 }

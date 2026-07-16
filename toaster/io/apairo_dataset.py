@@ -173,13 +173,19 @@ def frame_timestamp(seq_dir: str | Path, source_channel: str, stem: str) -> floa
 
     The line is found by the frame's position among the channel's sorted ``.npy``
     files (robust to gaps), matching how the loader pairs frames to timestamps.
+    Must use :func:`_frame_stems` (not a raw glob): a bare ``*.npy`` also matches
+    Toaster's own local sidecar labels saved beside the source channel
+    (``<stem>_toaster.npy``, from the plain "Save" button, unrelated to this
+    apairo channel), which would silently shift every later frame's position —
+    and therefore the timestamp this function writes into the label channel —
+    by however many sidecars happen to sit alphabetically before ``stem``.
     Returns ``None`` if there is no timestamps file or the frame isn't found.
     """
     channel_dir = Path(seq_dir) / source_channel
     ts_file = channel_dir / "timestamps.txt"
     if not ts_file.is_file():
         return None
-    frames = sorted(f.stem for f in channel_dir.glob("*.npy"))
+    frames = _frame_stems(channel_dir)
     try:
         idx = frames.index(stem)
     except ValueError:

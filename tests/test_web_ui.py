@@ -412,6 +412,33 @@ def test_engine_options_then_dispose(server, browser):
     assert opts["backOk"], "switching back to trackball must restore the free-tumble controls"
     assert opts["streamOk"], "streaming setCloud must skip the octree and leave the camera alone"
 
+    # Camera-feel guards (rerun-style): fly speed follows the camera-to-pivot
+    # distance, and the orbit radius can never collapse through the pivot.
+    feel = page.evaluate(
+        """(() => {
+          const v = window.__toaster.viewer;
+          const minDistOk = v.controls.minDistance > 0;
+          // Fly one tick from far, then from close: the step must shrink.
+          const target = v.controls.target.clone();
+          const step = (dist) => {
+            v.camera.position.set(target.x + dist, target.y, target.z);
+            v.controls.target.copy(target);
+            const before = v.camera.position.clone();
+            v._flyKeys.add("KeyW");
+            v._fly(0.05);
+            v._flyKeys.clear();
+            return v.camera.position.distanceTo(before);
+          };
+          const farStep = step(100);
+          const nearStep = step(0.5);
+          return { minDistOk, farStep, nearStep };
+        })()"""
+    )
+    assert feel["minDistOk"], "controls.minDistance must clamp the orbit radius"
+    assert feel["nearStep"] < feel["farStep"] / 20, (
+        f"fly speed must scale with pivot distance (far {feel['farStep']}, near {feel['nearStep']})"
+    )
+
     gone = page.evaluate(
         """(() => {
           window.__toaster.viewer.dispose();

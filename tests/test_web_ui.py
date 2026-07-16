@@ -366,6 +366,42 @@ def test_isolate_mode_falls_back_to_full_recompute(page):
     assert out["alphaDiff"] == 0, "alphas diverged after assigning under isolate"
 
 
+def test_page_idle_pauses_decorative_css_animations(page):
+    # Regression: two `infinite` CSS animations (the bottom-edge "ember" glow,
+    # the active theme's logo) ran unconditionally — independent of the 3D
+    # canvas's own render-on-demand loop, they alone kept QtWebEngine's Vulkan
+    # fallback compositing forever and OOM'd a session left open. app.js's
+    # watchPageIdle() adds body.idle after PAGE_IDLE_MS (8s) of no input
+    # anywhere on the page; style.css pauses those animations off it.
+    page.mouse.move(50, 50)  # establish an "active" baseline
+    idle_before = page.evaluate("document.body.classList.contains('idle')")
+    assert not idle_before, "must not be idle right after activity"
+
+    time.sleep(8.5)  # > PAGE_IDLE_MS with zero synthesized input in between
+    idle_after = page.evaluate("document.body.classList.contains('idle')")
+    assert idle_after, "must go idle after a stretch with no input anywhere"
+
+    paused = page.evaluate(
+        """(() => {
+          const after = getComputedStyle(document.body, '::after').animationPlayState;
+          // Target the ACTIVE theme's mark specifically — the other two themes'
+          // logo-art blocks sit at display:none and never animate regardless.
+          const marks = { toaster: '.toast', cafe: '.steam', arcade: '.invader' };
+          const cls = marks[document.body.dataset.theme];
+          const logo = document.querySelector(`.logo-art ${cls}`);
+          const logoState = logo ? getComputedStyle(logo).animationPlayState : 'n/a';
+          return { emberState: after, logoState };
+        })()"""
+    )
+    assert paused["emberState"] == "paused", f"ember glow must pause when idle: {paused}"
+    assert paused["logoState"] == "paused", f"active theme's logo must pause when idle: {paused}"
+
+    # Any input wakes it back up immediately — no lingering "still idle" frame.
+    page.mouse.move(60, 60)
+    idle_woken = page.evaluate("document.body.classList.contains('idle')")
+    assert not idle_woken, "must wake up on the very next interaction"
+
+
 def test_engine_options_then_dispose(server, browser):
     # dispose() is for hosts that embed the engine and tear viewers down —
     # exercise it on its own page so the shared page fixture stays alive.

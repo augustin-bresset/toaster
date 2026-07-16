@@ -92,6 +92,10 @@ body[data-theme="arcade"] .logo-art[data-logo="arcade"] { display: inline-flex; 
 @media (prefers-reduced-motion: reduce) {
   .logo-art .toast, .logo-art .steam, .logo-art .invader { animation: none; }
 }
+/* Same idle-pause as the ember glow above — these are `infinite` too. */
+body.idle .logo-art .toast,
+body.idle .logo-art .steam,
+body.idle .logo-art .invader { animation-play-state: paused; }
 .sep { width: 2px; height: 18px; background: var(--line); margin: 0 4px; }
 .spacer { flex: 1; }
 #status { color: var(--muted); font: 11px/1 ui-monospace, monospace; letter-spacing: 0.5px; }
@@ -114,6 +118,11 @@ body::after {
   pointer-events: none; z-index: 1; animation: ember 3s ease-in-out infinite;
 }
 @keyframes ember { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+/* Paused by app.js after a stretch with no input anywhere on the page — see
+   watchPageIdle()'s comment: an `infinite` animation never lets QtWebEngine's
+   Vulkan fallback stop compositing, which leaks the same way an unparked 3D
+   render loop would. */
+body.idle::after { animation-play-state: paused; }
 
 /* -- controls -- */
 button {

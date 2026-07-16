@@ -96,6 +96,32 @@ function initTheme() {
 
 const theme = () => document.body.dataset.theme;
 
+// Camera controls: "orbit" (default — horizon stays level, the standard
+// behaviour every other 3D viewer uses) or "trackball" (free tumble/roll —
+// kept for scans that aren't gravity-aligned, e.g. a forest-path lidar frame
+// no OrbitControls-style pole lock could turn upright).
+function applyControlStyle(style) {
+  if (style !== "orbit" && style !== "trackball") style = "orbit";
+  viewer.setControlStyle(style);
+  el("controls-style").value = style;
+  try {
+    localStorage.setItem("toaster-controls", style);
+  } catch {
+    /* private mode */
+  }
+}
+
+function initControlStyle() {
+  let saved = "orbit";
+  try {
+    saved = localStorage.getItem("toaster-controls") || "orbit";
+  } catch {
+    /* ignore */
+  }
+  applyControlStyle(saved);
+  el("controls-style").onchange = () => applyControlStyle(el("controls-style").value);
+}
+
 // A short-lived element that animates then removes itself.
 function flash(className, text, x, y) {
   const t = document.createElement("div");
@@ -179,6 +205,7 @@ async function boot() {
   buildModes();
   wire();
   initTheme();
+  initControlStyle();
   el("session-name").value = meta.session_channel || "ground_truth";
   if (meta.n > 0) {
     await loadCloud();

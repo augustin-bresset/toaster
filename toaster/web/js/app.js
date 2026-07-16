@@ -21,6 +21,30 @@ window.__toaster = {
   },
 };
 
+// A couple of decorative CSS animations (the bottom-edge "ember" glow, the
+// active theme's logo bob/steam/hop) run `infinite` — unlike the 3D canvas's
+// render-on-demand rAF loop, nothing ever stops them. Under QtWebEngine's
+// Vulkan fallback, continuous compositing leaks Oilpan memory the same way an
+// unparked rAF loop does (see viewer.js), so a session left open (not
+// necessarily idle at the 3D view — just not touching mouse/keyboard at all)
+// eventually OOMs even with a tiny, static cloud on screen. Pause them after
+// a stretch of no input anywhere on the page; CSS in style.css keys off
+// `body.idle`. The threshold is long enough that normal working cadence
+// (click/drag/type at least every few seconds) never pauses them.
+const PAGE_IDLE_MS = 8000;
+function watchPageIdle() {
+  let timer = null;
+  const markActive = () => {
+    document.body.classList.remove("idle");
+    clearTimeout(timer);
+    timer = setTimeout(() => document.body.classList.add("idle"), PAGE_IDLE_MS);
+  };
+  ["pointerdown", "pointermove", "wheel", "keydown"].forEach((t) =>
+    window.addEventListener(t, markActive, { passive: true }),
+  );
+  markActive();
+}
+
 let cloud = { xyz: null, features: {} };
 let state = null; // decoded { snapshot, labels, grouping, selection }
 let pickMode = "point";
@@ -978,6 +1002,7 @@ function exitVoxelMode() {
 // -- events -----------------------------------------------------------------
 
 function wire() {
+  watchPageIdle();
   el("psize").oninput = (e) => viewer.setPointSize(+e.target.value);
   el("round").onchange = (e) => viewer.setRound(e.target.checked);
   el("hide-labeled").onchange = (e) => setHideLabeled(e.target.checked);

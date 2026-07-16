@@ -1143,15 +1143,107 @@ function wire() {
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-// Make each floating window draggable by its title bar and raise it on focus.
-// Windows are position:fixed, so client coordinates map straight to left/top —
-// no offset-parent mismatch. The drag is clamped to the viewport (and below the
-// toolbar) so a window can never be lost behind the menu bar.
+// Per-window geometry the user has customized (size, collapsed state),
+// keyed by window id — restored on boot so a resized Segmenter window (the
+// long-list case) or a minimized one stays that way across reloads.
+function loadWindowState() {
+  try {
+    return JSON.parse(localStorage.getItem("toaster-windows") || "{}");
+  } catch {
+    return {};
+  }
+}
+function saveWindowState(id, patch) {
+  try {
+    const all = loadWindowState();
+    all[id] = { ...all[id], ...patch };
+    localStorage.setItem("toaster-windows", JSON.stringify(all));
+  } catch {
+    /* private mode */
+  }
+}
+
+function setMinimized(win, on) {
+  win.classList.toggle("minimized", on);
+  saveWindowState(win.id, { minimized: on });
+}
+
+// Make each floating window draggable by its title bar, resizable from its
+// bottom-right corner, and collapsible to just its titlebar — raising it on
+// focus throughout. Windows are position:fixed, so client coordinates map
+// straight to left/top — no offset-parent mismatch. The drag is clamped to
+// the viewport (and below the toolbar) so a window can never be lost behind
+// the menu bar.
+const WIN_MIN_WIDTH = 160;
+const WIN_MIN_HEIGHT = 90;
+
 function setupWindows() {
   const minTop = () => el("loading").getBoundingClientRect().bottom + 4;
+  const saved = loadWindowState();
   document.querySelectorAll(".window").forEach((win) => {
     win.addEventListener("pointerdown", () => (win.style.zIndex = ++topZ));
     const bar = win.querySelector(".titlebar");
+
+    // Minimize toggle: inserted right before an existing trailing ⚙/× button
+    // (both carry margin-left:auto, so it rides along to the far right with
+    // it) or, absent one, pushed there itself.
+    const minBtn = document.createElement("button");
+    minBtn.className = "min";
+    minBtn.textContent = "–";
+    minBtn.title = "Minimize / restore";
+    const trailing = bar.querySelector(".x, .gear");
+    if (trailing) bar.insertBefore(minBtn, trailing);
+    else {
+      minBtn.style.marginLeft = "auto";
+      bar.appendChild(minBtn);
+    }
+    minBtn.onclick = (e) => {
+      e.stopPropagation();
+      setMinimized(win, !win.classList.contains("minimized"));
+    };
+
+    // Resize grip: drags both width and height; CSS max-height already caps
+    // the effective height at the viewport bound, so this only needs a loose
+    // ceiling, not an exact one.
+    const grip = document.createElement("div");
+    grip.className = "resize-handle";
+    grip.textContent = "⤡";
+    grip.title = "Drag to resize";
+    win.appendChild(grip);
+    // The window's own pointerdown listener (added above) already raises it
+    // on any click inside, grip included — no need to repeat that here.
+    let resizing = null;
+    grip.addEventListener("pointerdown", (e) => {
+      const r = win.getBoundingClientRect();
+      resizing = { x: e.clientX, y: e.clientY, w: r.width, h: r.height };
+      grip.setPointerCapture(e.pointerId);
+      e.preventDefault(); // no text selection / touch scroll while dragging
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!resizing) return;
+      const maxW = window.innerWidth - win.getBoundingClientRect().left - 8;
+      const w = clamp(resizing.w + (e.clientX - resizing.x), WIN_MIN_WIDTH, maxW);
+      const h = clamp(resizing.h + (e.clientY - resizing.y), WIN_MIN_HEIGHT, window.innerHeight);
+      win.style.width = w + "px";
+      win.style.height = h + "px";
+    });
+    const endResize = (e) => {
+      if (!resizing) return;
+      resizing = null;
+      if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
+      saveWindowState(win.id, { width: win.style.width, height: win.style.height });
+    };
+    grip.addEventListener("pointerup", endResize);
+    grip.addEventListener("pointercancel", endResize);
+
+    // Restore this window's saved size/collapsed state, if any.
+    const s = saved[win.id];
+    if (s) {
+      if (s.width) win.style.width = s.width;
+      if (s.height) win.style.height = s.height;
+      if (s.minimized) win.classList.add("minimized");
+    }
+
     let dx = 0, dy = 0, dragging = false;
     bar.addEventListener("pointerdown", (e) => {
       if (e.target.closest("button")) return;

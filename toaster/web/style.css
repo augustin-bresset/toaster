@@ -159,6 +159,10 @@ main { flex: 1; position: relative; min-height: 0; overflow: hidden; }
   box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.7), 0 0 18px rgba(225, 6, 0, 0.12);
   max-height: calc(100vh - 70px);
 }
+/* Minimized: collapse to just the titlebar (a manually-set height from the
+   resize handle must not leave a tall empty box behind the hidden body). */
+.window.minimized { height: auto !important; }
+.window.minimized .body, .window.minimized .resize-handle { display: none; }
 .titlebar {
   display: flex; align-items: center; gap: 6px;
   padding: 6px 9px; cursor: move; user-select: none; touch-action: none;
@@ -176,11 +180,28 @@ main { flex: 1; position: relative; min-height: 0; overflow: hidden; }
   font-size: 14px; line-height: 1; padding: 0 2px; cursor: pointer;
 }
 .titlebar .gear:hover { color: var(--accent); }
-.body { padding: 8px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overflow-x: hidden; }
+.titlebar .min {
+  border: none; background: none; color: var(--muted);
+  font-size: 14px; line-height: 1; padding: 0 4px; cursor: pointer;
+}
+.titlebar .min:hover { color: var(--accent); }
+/* flex:1 (not just a default content size) so a window resized taller than
+   its content — the whole point of the resize handle — has its body actually
+   grow to fill the extra space and scroll internally, instead of leaving
+   dead space below a static-height body. */
+.body { flex: 1; min-height: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overflow-x: hidden; }
 .row button { min-width: 0; padding: 4px 6px; }
-.body.grow { flex: 1; min-height: 0; }
 .row { display: flex; align-items: center; gap: 6px; }
 .row button { flex: 1; }
+
+/* Bottom-right resize grip — drag to vary both width and height (JS-driven,
+   added to every .window uniformly; see setupWindows()). */
+.resize-handle {
+  position: absolute; right: 1px; bottom: 1px; width: 14px; height: 14px;
+  font-size: 11px; line-height: 14px; text-align: center;
+  color: var(--muted); cursor: nwse-resize; user-select: none; touch-action: none;
+}
+.resize-handle:hover { color: var(--accent); }
 
 /* -- lists -- */
 .list { display: flex; flex-direction: column; gap: 1px; overflow-y: auto; }

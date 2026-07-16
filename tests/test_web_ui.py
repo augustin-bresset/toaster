@@ -459,6 +459,94 @@ def test_camera_control_style_defaults_to_orbit_and_persists(page):
     assert page.evaluate("window.__toaster.viewer._controlStyle") == "orbit"
 
 
+def test_windows_minimize_resize_and_persist(page):
+    # Every floating window (Segmenter, Segments, etc.) gets a minimize
+    # toggle and a resize grip, added uniformly by setupWindows() — no
+    # per-window HTML wiring. Segmenter is the case that motivated this:
+    # its params list (or the Segments window's segment list) can run long.
+    counts = page.evaluate(
+        """(() => ({
+          windows: document.querySelectorAll('.window').length,
+          minBtns: document.querySelectorAll('.window .titlebar .min').length,
+          grips: document.querySelectorAll('.window .resize-handle').length,
+        }))()"""
+    )
+    assert counts["windows"] > 0
+    assert counts["minBtns"] == counts["windows"]
+    assert counts["grips"] == counts["windows"]
+
+    seg = page.query_selector("#win-segmenter")
+    min_btn = seg.query_selector(".titlebar .min")
+
+    # Minimize collapses the body and persists; restoring un-collapses it.
+    assert seg.query_selector(".body").is_visible()
+    min_btn.click()
+    time.sleep(0.1)
+    assert page.evaluate("document.getElementById('win-segmenter').classList.contains('minimized')")
+    assert not seg.query_selector(".body").is_visible()
+    assert page.evaluate(
+        "JSON.parse(localStorage.getItem('toaster-windows'))['win-segmenter'].minimized"
+    ) is True
+    min_btn.click()
+    time.sleep(0.1)
+    assert not page.evaluate(
+        "document.getElementById('win-segmenter').classList.contains('minimized')"
+    )
+
+    # Dragging the corner grip resizes both dimensions, and the body actually
+    # fills the extra height (base .body is flex:1 now, not just the old
+    # .grow modifier) instead of leaving dead space below static content.
+    box_before = seg.bounding_box()
+    grip = seg.query_selector(".resize-handle")
+    gbox = grip.bounding_box()
+    gx, gy = gbox["x"] + gbox["width"] / 2, gbox["y"] + gbox["height"] / 2
+    page.mouse.move(gx, gy)
+    page.mouse.down()
+    page.mouse.move(gx + 120, gy + 200, steps=10)
+    page.mouse.up()
+    time.sleep(0.2)
+    box_after = seg.bounding_box()
+    assert box_after["width"] > box_before["width"] + 50
+    assert box_after["height"] > box_before["height"] + 50
+    body_height = page.evaluate(
+        "document.querySelector('#win-segmenter .body').getBoundingClientRect().height"
+    )
+    assert body_height > 100, "a taller window must give its body the extra space"
+
+    # Shrinking past the floor clamps to WIN_MIN_WIDTH/HEIGHT, not zero.
+    gbox2 = grip.bounding_box()
+    gx2, gy2 = gbox2["x"] + gbox2["width"] / 2, gbox2["y"] + gbox2["height"] / 2
+    page.mouse.move(gx2, gy2)
+    page.mouse.down()
+    page.mouse.move(gx2 - 2000, gy2 - 2000, steps=10)
+    page.mouse.up()
+    time.sleep(0.2)
+    tiny = seg.bounding_box()
+    assert tiny["width"] >= 150 and tiny["height"] >= 80
+
+    # The titlebar drag (raise/move) still works after adding the min/resize
+    # controls — they must not have hijacked its pointer events.
+    bar = seg.query_selector(".titlebar")
+    bbox = bar.bounding_box()
+    bx, by = bbox["x"] + 40, bbox["y"] + bbox["height"] / 2
+    x_before = seg.bounding_box()["x"]
+    page.mouse.move(bx, by)
+    page.mouse.down()
+    page.mouse.move(bx + 60, by + 40, steps=8)
+    page.mouse.up()
+    time.sleep(0.2)
+    assert seg.bounding_box()["x"] != x_before
+
+    # Geometry survives a reload (localStorage-backed, restored in setupWindows()).
+    page.reload()
+    page.wait_for_function("window.__toaster.viewer._octree !== null", timeout=90000)
+    restored = page.evaluate(
+        "(() => { const w = document.getElementById('win-segmenter');"
+        " return { width: w.style.width, height: w.style.height }; })()"
+    )
+    assert restored["width"] and restored["height"]
+
+
 def test_engine_options_then_dispose(server, browser):
     # dispose() is for hosts that embed the engine and tear viewers down —
     # exercise it on its own page so the shared page fixture stays alive.

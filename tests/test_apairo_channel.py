@@ -97,6 +97,27 @@ def test_frame_timestamp_uses_sorted_position(tmp_path):
     assert frame_timestamp(seq, "ouster_points", "absent") is None
 
 
+def test_frame_timestamp_ignores_toaster_sidecars(tmp_path):
+    # Regression: a Toaster local sidecar saved beside the source channel
+    # (<stem>_toaster.npy, from the plain "Save" button — unrelated to this
+    # apairo channel) also matches a bare "*.npy" glob. Sorting alphabetically
+    # before a later frame, it used to shift that frame's position by one,
+    # writing the WRONG timestamp into any apairo channel saved afterward —
+    # which then desyncs from its source under any nearest-timestamp resync
+    # (e.g. a downstream viewer's "labels are async, resample onto the nearest
+    # lidar scan" playback), even though the frame's own file is untouched.
+    seq = _apairo_seq(tmp_path)
+    ch = seq / "ouster_points"
+    for i in range(3):
+        np.save(ch / f"00000{i}.npy", np.zeros((2, 4), np.float32))
+    # A sidecar sorting between frame 0 and frame 1.
+    np.save(ch / "000000_toaster.npy", np.zeros(2, np.int32))
+    (ch / "timestamps.txt").write_text("1.0\n2.0\n3.0\n")
+    assert frame_timestamp(seq, "ouster_points", "000000") == 1.0
+    assert frame_timestamp(seq, "ouster_points", "000001") == 2.0
+    assert frame_timestamp(seq, "ouster_points", "000002") == 3.0
+
+
 # -- save_apairo wiring (fake apairo module) --------------------------------
 
 

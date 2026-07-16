@@ -96,12 +96,13 @@ function initTheme() {
 
 const theme = () => document.body.dataset.theme;
 
-// Camera controls: "orbit" (default — horizon stays level, the standard
-// behaviour every other 3D viewer uses) or "trackball" (free tumble/roll —
-// kept for scans that aren't gravity-aligned, e.g. a forest-path lidar frame
-// no OrbitControls-style pole lock could turn upright).
+// Camera controls: "trackball" (default — free tumble/roll in any direction,
+// so a scan that isn't gravity-aligned, e.g. a forest-path lidar frame, can
+// still be turned to any angle) or "orbit" (horizon stays level, like most
+// 3D viewers — but OrbitControls walls off at the poles, "blocked at a
+// plane", which is exactly why trackball stayed the default here).
 function applyControlStyle(style) {
-  if (style !== "orbit" && style !== "trackball") style = "orbit";
+  if (style !== "orbit" && style !== "trackball") style = "trackball";
   viewer.setControlStyle(style);
   el("controls-style").value = style;
   try {
@@ -112,9 +113,9 @@ function applyControlStyle(style) {
 }
 
 function initControlStyle() {
-  let saved = "orbit";
+  let saved = "trackball";
   try {
-    saved = localStorage.getItem("toaster-controls") || "orbit";
+    saved = localStorage.getItem("toaster-controls") || "trackball";
   } catch {
     /* ignore */
   }

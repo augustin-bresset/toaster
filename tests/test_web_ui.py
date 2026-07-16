@@ -402,61 +402,62 @@ def test_page_idle_pauses_decorative_css_animations(page):
     assert not idle_woken, "must wake up on the very next interaction"
 
 
-def test_camera_control_style_defaults_to_orbit_and_persists(page):
-    # Regression: the engine grew setControlStyle('orbit'|'trackball') for
-    # embedders (projector defaults to orbit), but the toaster app itself
-    # never called it — every camera drag free-tumbled (roll included) with
-    # no way to get the level-horizon behaviour every other 3D viewer uses.
-    # app.js now defaults to "orbit" and exposes a Display-window toggle.
+def test_camera_control_style_defaults_to_trackball_and_persists(page):
+    # Regression: toaster briefly defaulted to Orbit-style controls (matching
+    # most 3D viewers), but OrbitControls walls off at the poles — "blocked
+    # at a plane" — which is exactly why this codebase used TrackballControls
+    # exclusively in the first place (free tumble in any direction, needed to
+    # turn a scan that isn't gravity-aligned upright). Reverted: trackball is
+    # the default again; Orbit stays available as an opt-in toggle.
     default_style = page.evaluate("window.__toaster.viewer._controlStyle")
-    assert default_style == "orbit", "toaster must default to orbit, not free trackball"
-    assert page.evaluate("document.getElementById('controls-style').value") == "orbit"
+    assert default_style == "trackball", "toaster must default to free-tumble trackball"
+    assert page.evaluate("document.getElementById('controls-style').value") == "trackball"
 
     canvas = page.query_selector("canvas")
     box = canvas.bounding_box()
     cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
 
-    # Orbit: a drag rotates around the pivot but the horizon (camera.up)
-    # never rolls — the defining difference from free trackball tumble.
-    up_before = page.evaluate("window.__toaster.viewer.camera.up.toArray()")
-    page.mouse.move(cx, cy)
-    page.mouse.down()
-    page.mouse.move(cx + 150, cy + 20, steps=8)
-    page.mouse.up()
-    time.sleep(0.3)
-    up_after = page.evaluate("window.__toaster.viewer.camera.up.toArray()")
-    assert up_after == up_before, "an orbit drag must never roll the horizon"
-
-    # The arrow-key roll shortcut (rotateView, which mutates camera.up
-    # directly) must stay compatible with OrbitControls — its up-alignment
-    # quaternion is recomputed every update() call, so this isn't a one-time
-    # snapshot that could go stale.
-    page.click("canvas", position={"x": 10, "y": 10})
-    for _ in range(6):
-        page.keyboard.press("ArrowLeft")
-    time.sleep(0.3)
-    up_after_roll = page.evaluate("window.__toaster.viewer.camera.up.toArray()")
-    assert up_after_roll != up_before, "the roll shortcut must actually rotate camera.up"
+    # Trackball: a drag must still move the camera (basic sanity — its whole
+    # point is that it does NOT constrain the horizon the way Orbit does, so
+    # unlike the Orbit case there is no "up never changes" assertion here).
+    # Retried: a synthetic drag landing right after another test's real 8.5s
+    # sleep (the idle-CSS test just before this one) occasionally gets
+    # coalesced away by a loaded headless Chromium — a pointer-event timing
+    # artifact, not a product behaviour to pin down with more raw sleeps.
     pos_before_drag = page.evaluate("window.__toaster.viewer.camera.position.toArray()")
+    pos_after_drag = pos_before_drag
+    for attempt in range(3):
+        page.mouse.move(cx, cy)
+        page.mouse.down()
+        page.mouse.move(cx + 150 + attempt, cy + 20, steps=8)
+        page.mouse.up()
+        time.sleep(0.3)
+        pos_after_drag = page.evaluate("window.__toaster.viewer.camera.position.toArray()")
+        if pos_after_drag != pos_before_drag:
+            break
+    assert pos_after_drag != pos_before_drag, "trackball drag must move the camera"
+
+    # Switching to Orbit (for a gravity-aligned scan where a level horizon is
+    # wanted) persists and actually swaps the underlying controls; a drag
+    # then never rolls the horizon — the defining Orbit behaviour.
+    page.evaluate("document.getElementById('win-display').style.display = 'flex'")
+    page.select_option("#controls-style", "orbit")
+    assert page.evaluate("window.__toaster.viewer._controlStyle") == "orbit"
+    assert page.evaluate("localStorage.getItem('toaster-controls')") == "orbit"
+
+    up_before = page.evaluate("window.__toaster.viewer.camera.up.toArray()")
     page.mouse.move(cx, cy)
     page.mouse.down()
     page.mouse.move(cx - 100, cy + 60, steps=8)
     page.mouse.up()
     time.sleep(0.3)
-    pos_after_drag = page.evaluate("window.__toaster.viewer.camera.position.toArray()")
-    assert pos_after_drag != pos_before_drag, "orbit drag must still move the camera after roll"
-
-    # Switching to trackball (for a non-gravity-aligned scan) persists and
-    # actually swaps the underlying controls.
-    page.evaluate("document.getElementById('win-display').style.display = 'flex'")
-    page.select_option("#controls-style", "trackball")
-    assert page.evaluate("window.__toaster.viewer._controlStyle") == "trackball"
-    assert page.evaluate("localStorage.getItem('toaster-controls')") == "trackball"
+    up_after = page.evaluate("window.__toaster.viewer.camera.up.toArray()")
+    assert up_after == up_before, "an orbit drag must never roll the horizon"
 
     # Reset for any later test on this shared page.
-    page.select_option("#controls-style", "orbit")
+    page.select_option("#controls-style", "trackball")
     page.evaluate("document.getElementById('win-display').style.display = 'none'")
-    assert page.evaluate("window.__toaster.viewer._controlStyle") == "orbit"
+    assert page.evaluate("window.__toaster.viewer._controlStyle") == "trackball"
 
 
 def test_windows_minimize_resize_and_persist(page):

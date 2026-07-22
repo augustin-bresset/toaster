@@ -19,6 +19,10 @@ dependencies = [
     "plyfile",
     "fastapi",
     "uvicorn[standard]",
+    # Shared three.js point-cloud engine, served from projector's install via
+    # projector.web_engine_dir(). projector is a sibling checkout in ~/dev,
+    # resolved from there by [tool.uv.sources] below (editable).
+    "projector",
     # Webview host for the desktop window. The pyside6 extra pulls PySide6 (LGPL,
     # with QtWebEngine) and the qtpy shim pywebview's Qt backend imports. For a
     # fully Qt-free host install system WebKitGTK and drop this to a bare pywebview.
@@ -35,6 +39,11 @@ models = ["onnxruntime-gpu"]
 torch = ["torch"]
 viewer3d = ["pyvista"]  # legacy VTK Viewer backend (toaster.viewer.PyVistaViewer)
 dev = ["pytest", "ruff", "httpx", "playwright"]  # playwright: `playwright install chromium`
+
+# projector (the shared engine) is co-developed locally in ~/dev; resolve the
+# dependency from the sibling checkout (editable) rather than from an index.
+[tool.uv.sources]
+projector = { path = "../projector", editable = true }
 
 [project.scripts]
 toaster = "toaster.desktop:main"

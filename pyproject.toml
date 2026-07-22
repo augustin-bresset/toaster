@@ -51,7 +51,21 @@ where = ["."]
 include = ["toaster*"]
 
 [tool.setuptools.package-data]
-toaster = ["py.typed", "schemas/*.yaml", "web/*.html", "web/*.css", "web/*.svg", "web/*.png", "web/js/*.js"]
+# web/js/*.js is non-recursive: the engine (web/js/engine/) and vendored three
+# (web/vendor/) must be listed explicitly, or a wheel/package install (the HF
+# Space) ships no engine and the 3D view loads nothing.
+toaster = [
+    "py.typed",
+    "schemas/*.yaml",
+    "web/*.html",
+    "web/*.css",
+    "web/*.svg",
+    "web/*.png",
+    "web/js/*.js",
+    "web/js/engine/*.js",
+    "web/vendor/three/*.js",
+    "web/vendor/three/addons/controls/*.js",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

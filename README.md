@@ -17,6 +17,12 @@ pinned: false
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
+> **Branches — this runs on [projector](https://github.com/augustin-bresset/projector).**
+> The 3D engine (and its procedural world / demo) come from the shared **projector**
+> package rather than a private copy — this is where everything is heading. A **`standalone`**
+> branch keeps the earlier self-contained version with **no dependency on projector**;
+> it is deprecated, but kept so you can still try it.
+
 Annotate lidar **point clouds** in 3D — walk through them, select points one by
 one or by zone, assign semantic classes — and, its headline feature, **plug in
 any model that groups points together** (clustering like DBSCAN, or neural-net

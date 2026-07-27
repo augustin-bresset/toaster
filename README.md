@@ -28,6 +28,12 @@ one or by zone, assign semantic classes — and, its headline feature, **plug in
 any model that groups points together** (clustering like DBSCAN, or neural-net
 inference) so that **clicking one cluster labels the whole group at once**.
 
+## See it in action
+
+[![Watch a Toaster labeling session on YouTube](https://img.youtube.com/vi/WpehEfeX174/maxresdefault.jpg)](https://youtu.be/WpehEfeX174)
+
+▶️ A full labeling session, sped up — segment, select a group, assign a class, repeat.
+
 ## The idea in one picture
 
 A clustering/segmentation model and a manual zone selection are the *same thing*:

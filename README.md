@@ -20,8 +20,8 @@ pinned: false
 > **Branches — this runs on [projector](https://github.com/augustin-bresset/projector).**
 > The 3D engine (and its procedural world / demo) come from the shared **projector**
 > package rather than a private copy — this is where everything is heading. A **`standalone`**
-> branch keeps the earlier self-contained version with **no dependency on projector**;
-> it is deprecated, but kept so you can still try it.
+> branch keeps a fully self-contained version with **no dependency on projector**,
+> for anyone who prefers not to rely on the shared engine.
 
 Annotate lidar **point clouds** in 3D — walk through them, select points one by
 one or by zone, assign semantic classes — and, its headline feature, **plug in

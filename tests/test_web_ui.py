@@ -103,9 +103,12 @@ def page(server, browser):
     # carries a compile log, so only the empty-log noise is filtered.
     page.on(
         "console",
-        lambda m: errors.append(f"console: {m.text}")
-        if m.type == "error" and not ("VALIDATE_STATUS false" in m.text and "ERROR:" not in m.text)
-        else None,
+        lambda m: (
+            errors.append(f"console: {m.text}")
+            if m.type == "error"
+            and not ("VALIDATE_STATUS false" in m.text and "ERROR:" not in m.text)
+            else None
+        ),
     )
     page.goto(server)
     page.wait_for_function(
@@ -238,9 +241,7 @@ def test_delta_recolor_matches_full_rerender(page):
     page.mouse.down()
     page.mouse.move(720, 480, steps=5)
     page.mouse.up()
-    page.wait_for_function(
-        "window.__toaster.debug.getState().selection.length > 0", timeout=15000
-    )
+    page.wait_for_function("window.__toaster.debug.getState().selection.length > 0", timeout=15000)
     page.mouse.dblclick(640, 440)  # viewport coords, inside the drawn box — delta path
     page.wait_for_function(
         "window.__toaster.debug.getState().selection.length === 0", timeout=15000
@@ -275,9 +276,7 @@ def test_delta_recolor_matches_full_rerender(page):
     page.mouse.down()
     page.mouse.move(560, 400, steps=5)
     page.mouse.up()
-    page.wait_for_function(
-        "window.__toaster.debug.getState().selection.length > 0", timeout=15000
-    )
+    page.wait_for_function("window.__toaster.debug.getState().selection.length > 0", timeout=15000)
     page.mouse.dblclick(480, 330)  # viewport coords, inside the second box
     page.wait_for_function(
         "window.__toaster.debug.getState().selection.length === 0", timeout=15000
@@ -304,9 +303,7 @@ def test_delta_upload_matches_full_upload_on_screen(page):
     page.mouse.down()
     page.mouse.move(860, 620, steps=5)
     page.mouse.up()
-    page.wait_for_function(
-        "window.__toaster.debug.getState().selection.length > 0", timeout=15000
-    )
+    page.wait_for_function("window.__toaster.debug.getState().selection.length > 0", timeout=15000)
     page.mouse.dblclick(780, 560)  # delta path
     page.wait_for_function(
         "window.__toaster.debug.getState().selection.length === 0", timeout=15000
@@ -340,9 +337,7 @@ def test_isolate_mode_falls_back_to_full_recompute(page):
     page.mouse.down()
     page.mouse.move(440, 620, steps=5)
     page.mouse.up()
-    page.wait_for_function(
-        "window.__toaster.debug.getState().selection.length > 0", timeout=15000
-    )
+    page.wait_for_function("window.__toaster.debug.getState().selection.length > 0", timeout=15000)
     page.keyboard.press("i")  # isolate the selection
     page.mouse.dblclick(370, 560)  # label it (assign clears the selection → isolate disarms)
     page.wait_for_function(
@@ -485,9 +480,12 @@ def test_windows_minimize_resize_and_persist(page):
     time.sleep(0.1)
     assert page.evaluate("document.getElementById('win-segmenter').classList.contains('minimized')")
     assert not seg.query_selector(".body").is_visible()
-    assert page.evaluate(
-        "JSON.parse(localStorage.getItem('toaster-windows'))['win-segmenter'].minimized"
-    ) is True
+    assert (
+        page.evaluate(
+            "JSON.parse(localStorage.getItem('toaster-windows'))['win-segmenter'].minimized"
+        )
+        is True
+    )
     min_btn.click()
     time.sleep(0.1)
     assert not page.evaluate(

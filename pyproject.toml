@@ -38,7 +38,9 @@ csf = ["cloth-simulation-filter"]  # CSF ground-detection segmenter
 models = ["onnxruntime-gpu"]
 torch = ["torch"]
 viewer3d = ["pyvista"]  # legacy VTK Viewer backend (toaster.viewer.PyVistaViewer)
-dev = ["pytest", "ruff", "httpx", "playwright"]  # playwright: `playwright install chromium`
+# ruff pinned to the pre-commit rev (.pre-commit-config.yaml) so CI and the hook
+# format identically — an unpinned ruff drifts and fails CI on code the hook passed.
+dev = ["pytest", "ruff==0.15.22", "pre-commit", "httpx", "playwright"]  # playwright: `playwright install chromium`
 
 # projector (the shared engine) is co-developed locally in ~/dev; resolve the
 # dependency from the sibling checkout (editable) rather than from an index.

@@ -1,16 +1,3 @@
----
-title: Toaster Demo
-emoji: 🔥
-colorFrom: red
-colorTo: gray
-sdk: docker
-app_port: 7860
-pinned: false
----
-
-<!-- The YAML block above is Hugging Face Space metadata. It lives ONLY on the
-     hf-deploy branch (pushed to the Space), so it never appears on GitHub's main. -->
-
 # Toaster
 
 [![CI](https://github.com/augustin-bresset/toaster/actions/workflows/ci.yml/badge.svg)](https://github.com/augustin-bresset/toaster/actions/workflows/ci.yml)

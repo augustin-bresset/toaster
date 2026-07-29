@@ -239,7 +239,37 @@
         </div>
         <div class="body">
           <div id="save-apairo" style="display: none; margin-bottom: 8px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 4px">
-            <div style="margin-bottom: 4px">📦 apairo dataset detected — write labels back as a channel</div>
+            <div style="margin-bottom: 4px">
+              <!-- apairo mark (two clinking databases); charbon side inherits the
+                   text colour so it reads on either theme, ocre stays the accent. -->
+              <svg viewBox="240 118 230 230" width="14" height="14" aria-hidden="true"
+                   style="vertical-align: -2px; flex: none">
+                <g stroke="#6B7A88" stroke-width="5" stroke-linecap="round">
+                  <line x1="355" y1="168" x2="355" y2="132" />
+                  <line x1="342" y1="172" x2="329" y2="144" />
+                  <line x1="368" y1="172" x2="381" y2="144" />
+                </g>
+                <g transform="translate(291,250) rotate(14)" fill="none" stroke="currentColor"
+                   stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+                  <ellipse cx="0" cy="-70" rx="46" ry="15" />
+                  <line x1="-46" y1="-70" x2="-46" y2="70" />
+                  <line x1="46" y1="-70" x2="46" y2="70" />
+                  <path d="M-46,-23 a46,15 0 0,0 92,0" />
+                  <path d="M-46,24 a46,15 0 0,0 92,0" />
+                  <path d="M-46,70 a46,15 0 0,0 92,0" />
+                </g>
+                <g transform="translate(419,250) rotate(-14)" fill="none" stroke="#DDA42A"
+                   stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+                  <ellipse cx="0" cy="-70" rx="46" ry="15" />
+                  <line x1="-46" y1="-70" x2="-46" y2="70" />
+                  <line x1="46" y1="-70" x2="46" y2="70" />
+                  <path d="M-46,-23 a46,15 0 0,0 92,0" />
+                  <path d="M-46,24 a46,15 0 0,0 92,0" />
+                  <path d="M-46,70 a46,15 0 0,0 92,0" />
+                </g>
+              </svg>
+              apairo dataset detected — write labels back as a channel
+            </div>
             <label class="row">channel
               <input id="save-apairo-channel" type="text" spellcheck="false" value="ground_truth" style="flex: 1" />
             </label>

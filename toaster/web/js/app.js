@@ -58,6 +58,7 @@ function clearBox() {
 }
 let topZ = 10;
 let nav = null; // apairo dataset position: { is_dataset, sequences, sequence, channels, channel, frame_index, frame_count, frame_stem }
+let tfInfo = null; // apairo TF resolution: { available, resolvable, target, active }
 let dirty = false; // unsaved label changes on the current frame
 let segSpecs = {}; // segmenter name -> [{name, type, default, min, max, step}]
 let segGravity = {}; // segmenter name -> bool (accepts an "up" gravity vector)
@@ -227,6 +228,11 @@ async function refreshNav() {
   } catch {
     nav = { is_dataset: false };
   }
+  try {
+    tfInfo = await api.apairoTf();
+  } catch {
+    tfInfo = null;
+  }
   renderNav();
 }
 
@@ -245,6 +251,19 @@ function renderNav() {
   el("ds-frame").textContent = `${nav.frame_stem ?? "?"}  ${nav.frame_index + 1}/${nav.frame_count}`;
   el("ds-prev").disabled = nav.frame_index <= 0;
   el("ds-next").disabled = nav.frame_index >= nav.frame_count - 1;
+  // TF resolution: only offer it when a resolvable chain is detected for this frame.
+  const tfRow = el("ds-tf-row");
+  if (tfInfo && tfInfo.available) {
+    tfRow.style.display = "flex";
+    const box = el("ds-tf");
+    box.checked = !!tfInfo.active;
+    box.disabled = !tfInfo.resolvable;
+    tfRow.title = tfInfo.resolvable
+      ? `Stand the scan upright by resolving its TF chain into the ${tfInfo.target} frame — stays on until you close Toaster`
+      : "Resolving TFs needs apairo + apairo_transform installed";
+  } else {
+    tfRow.style.display = "none";
+  }
 }
 
 // Open a specific dataset frame (server clamps the index), guarding unsaved work.
@@ -1034,6 +1053,11 @@ function wire() {
   el("psize").oninput = (e) => viewer.setPointSize(+e.target.value);
   viewer.setPointSize(+el("psize").value); // apply the slider's default at startup (engine default differs)
   el("round").onchange = (e) => viewer.setRound(e.target.checked);
+  el("ds-tf").onchange = async (e) => {
+    tfInfo = await api.setTf(e.target.checked); // session-wide until Toaster closes
+    await loadCloud(); // server-side xyz changed — re-fetch geometry and reframe
+    el("ds-tf").checked = !!tfInfo.active;
+  };
   el("hide-labeled").onchange = (e) => setHideLabeled(e.target.checked);
   el("vis-pill").onclick = revealAll;
   el("seg-name").onchange = () => renderSegParams(el("seg-name").value);

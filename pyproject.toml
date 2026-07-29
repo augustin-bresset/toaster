@@ -30,8 +30,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# apairo 0.5.0+ for ChannelWriter (label write-back); pinned to the release tag.
-apairo = ["apairo @ git+https://github.com/apairo-robotics/apairo.git@v0.5.0"]
+# apairo 0.5.0+ for ChannelWriter (label write-back); apairo-transform for TF
+# resolution (Se3Interp/ApplyPose). Both pinned to their release tags.
+apairo = [
+    "apairo @ git+https://github.com/apairo-robotics/apairo.git@v0.5.0",
+    "apairo-transform @ git+https://github.com/apairo-robotics/apairo_transform.git@v0.2.0",
+]
 open3d = ["open3d"]
 hdbscan = ["hdbscan"]
 csf = ["cloth-simulation-filter"]  # CSF ground-detection segmenter

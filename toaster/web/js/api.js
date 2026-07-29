@@ -54,6 +54,8 @@ export const api = {
   save: (path = null) => jpost("/api/save", { path }),
   apairoInfo: () => jget("/api/apairo_info"),
   apairoNav: () => jget("/api/apairo_nav"),
+  apairoTf: () => jget("/api/apairo_tf"),
+  setTf: (active) => jpost("/api/apairo_tf", { active }),
   apairoOpen: (sequence, channel, frame_index) =>
     jpost("/api/apairo_open", { sequence, channel, frame_index }),
   saveApairo: (channel) => jpost("/api/save_apairo", { channel }),

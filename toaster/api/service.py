@@ -42,6 +42,12 @@ class AnnotationService:
         self.session_state = self.session_store.load()
         self._session: Session | None = None
         self._controller: InteractionController | None = None
+        # TF resolution preference for apairo frames, remembered until the app
+        # closes: the body frame to stand clouds up in (e.g. "odom"), or None
+        # for the raw sensor frame. ``_tf_applied`` is the 4x4 currently applied
+        # to the live cloud, kept so a toggle can undo it in place.
+        self._tf_resolve: str | None = None
+        self._tf_applied: np.ndarray | None = None
 
     def _remember_session(self) -> None:
         """Persist the session preferences, ignoring a read-only filesystem."""
@@ -70,6 +76,7 @@ class AnnotationService:
 
             path = write_demo_cloud()
         cloud = load_cloud(path)
+        self._apply_tf_on_load(cloud)
         schema = self.schema
         if cloud.source is not None:
             stored_schema = self.schema_store.load(cloud.source)
@@ -90,6 +97,78 @@ class AnnotationService:
         self.session_state.remember(str(Path(path).expanduser().resolve()))
         self._remember_session()
         return self.meta()
+
+    # -- TF resolution (apairo) -------------------------------------------
+    # Optionally stand an apairo frame's cloud upright by resolving its TF chain
+    # (sensor -> base -> a gravity-fixed body frame). apairo does the transform
+    # maths; here we only apply the resulting 4x4 to the loaded points, so labels
+    # (per-point, order-preserving) and the source-frame realignment stay valid.
+
+    @staticmethod
+    def _apply_matrix(xyz: np.ndarray, tf: np.ndarray) -> np.ndarray:
+        """Rigid 4x4 applied to ``(N, 3)`` xyz (NaN rows stay NaN); new array."""
+        return ((xyz @ tf[:3, :3].T) + tf[:3, 3]).astype(np.float32)
+
+    def _apply_tf_on_load(self, cloud) -> None:
+        """When TF resolution is active, transform a freshly loaded frame's xyz."""
+        self._tf_applied = None
+        if self._tf_resolve is None or cloud.source is None:
+            return
+        from toaster.io.apairo_dataset import detect_apairo_nav, resolve_tf_matrix
+
+        nav = detect_apairo_nav(cloud.source)
+        if nav is None or nav.frame_index < 0:
+            return
+        tf = resolve_tf_matrix(cloud.source, nav.frame_index, self._tf_resolve)
+        if tf is not None:
+            cloud.xyz = self._apply_matrix(cloud.xyz, tf)
+            self._tf_applied = tf
+
+    def tf_info(self) -> dict[str, Any]:
+        """Whether the open frame's TFs can be resolved, and the current choice."""
+        import importlib.util
+
+        from toaster.io.apairo_dataset import detect_tf
+
+        src = self._session.cloud.source if self._session else None
+        tf = detect_tf(src) if src is not None else None
+        resolvable = (
+            tf is not None
+            and importlib.util.find_spec("apairo") is not None
+            and importlib.util.find_spec("apairo_transform") is not None
+        )
+        return {
+            "available": tf is not None,
+            "resolvable": resolvable,
+            "target": tf.target if tf is not None else None,
+            "active": self._tf_resolve is not None,
+        }
+
+    def set_tf_resolve(self, active: bool) -> dict[str, Any]:
+        """Turn TF resolution on/off for the session and (re)apply to the open frame."""
+        from toaster.io.apairo_dataset import (
+            DEFAULT_TF_TARGET,
+            detect_apairo_nav,
+            resolve_tf_matrix,
+        )
+
+        want = DEFAULT_TF_TARGET if active else None
+        if want != self._tf_resolve:
+            self._tf_resolve = want
+            if self._session is not None:
+                cloud = self._session.cloud
+                if self._tf_applied is not None:  # undo the current transform in place
+                    inv = np.linalg.inv(self._tf_applied)
+                    cloud.xyz = self._apply_matrix(cloud.xyz, inv)
+                    self._tf_applied = None
+                if want is not None and cloud.source is not None:
+                    nav = detect_apairo_nav(cloud.source)
+                    if nav is not None and nav.frame_index >= 0:
+                        tf = resolve_tf_matrix(cloud.source, nav.frame_index, want)
+                        if tf is not None:
+                            cloud.xyz = self._apply_matrix(cloud.xyz, tf)
+                            self._tf_applied = tf
+        return self.tf_info()
 
     @property
     def has_cloud(self) -> bool:

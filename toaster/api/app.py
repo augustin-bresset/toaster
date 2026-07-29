@@ -109,6 +109,10 @@ class ApairoBody(BaseModel):
     channel: str = "ground_truth"  # name of the apairo channel to write
 
 
+class TfResolveBody(BaseModel):
+    active: bool  # resolve the TF chain (stand the cloud upright) or keep the sensor frame
+
+
 class SessionNameBody(BaseModel):
     name: str  # session name = apairo write-back / resume channel
 
@@ -207,6 +211,14 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     @app.get("/api/apairo_nav")
     def apairo_nav():
         return service.apairo_nav()
+
+    @app.get("/api/apairo_tf")
+    def apairo_tf_info():
+        return service.tf_info()
+
+    @app.post("/api/apairo_tf")
+    def apairo_tf(body: TfResolveBody):
+        return service.set_tf_resolve(body.active)
 
     @app.post("/api/apairo_open")
     def apairo_open(body: ApairoOpenBody):

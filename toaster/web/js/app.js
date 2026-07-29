@@ -1032,6 +1032,7 @@ function exitVoxelMode() {
 function wire() {
   watchPageIdle();
   el("psize").oninput = (e) => viewer.setPointSize(+e.target.value);
+  viewer.setPointSize(+el("psize").value); // apply the slider's default at startup (engine default differs)
   el("round").onchange = (e) => viewer.setRound(e.target.checked);
   el("hide-labeled").onchange = (e) => setHideLabeled(e.target.checked);
   el("vis-pill").onclick = revealAll;

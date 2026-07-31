@@ -109,6 +109,21 @@ class AnnotationService:
         """Rigid 4x4 applied to ``(N, 3)`` xyz (NaN rows stay NaN); new array."""
         return ((xyz @ tf[:3, :3].T) + tf[:3, 3]).astype(np.float32)
 
+    @staticmethod
+    def _upright(tf: np.ndarray) -> np.ndarray:
+        """Keep only the orientation — zero the world translation so the cloud
+        stays sensor-centred near the origin.
+
+        The absolute odom position is irrelevant for standing a single frame
+        upright (the camera reframes anyway), and it is dangerous: an odometry
+        that has diverged puts a frame millions of metres out, where float32
+        point coordinates snap to a multi-metre lattice — the whole scan
+        collapses into aligned rows and most points merge and vanish.
+        """
+        rot = tf.copy()
+        rot[:3, 3] = 0.0
+        return rot
+
     def _apply_tf_on_load(self, cloud) -> None:
         """When TF resolution is active, transform a freshly loaded frame's xyz."""
         self._tf_applied = None
@@ -121,6 +136,7 @@ class AnnotationService:
             return
         tf = resolve_tf_matrix(cloud.source, nav.frame_index, self._tf_resolve)
         if tf is not None:
+            tf = self._upright(tf)
             cloud.xyz = self._apply_matrix(cloud.xyz, tf)
             self._tf_applied = tf
 
@@ -166,6 +182,7 @@ class AnnotationService:
                     if nav is not None and nav.frame_index >= 0:
                         tf = resolve_tf_matrix(cloud.source, nav.frame_index, want)
                         if tf is not None:
+                            tf = self._upright(tf)
                             cloud.xyz = self._apply_matrix(cloud.xyz, tf)
                             self._tf_applied = tf
         return self.tf_info()

@@ -156,3 +156,15 @@ def test_resolve_matrix_composes_mount_and_pose(tmp_path):
     # resolved transform must equal the static mount alone: get_tf(os_sensor,
     # base_link) = inv(mount edge).
     np.testing.assert_allclose(tf, np.linalg.inv(_MOUNT_EDGE), atol=1e-6)
+
+
+def test_upright_zeroes_translation_keeps_rotation():
+    """A diverged odometry can place a frame millions of metres out; the service
+    keeps only the rotation so float32 point coordinates stay well-conditioned."""
+    from toaster.api.service import AnnotationService
+
+    tf = np.array([[0, -1, 0, 9.4e6], [1, 0, 0, 4.8e6], [0, 0, 1, -2.3e7], [0, 0, 0, 1]], float)
+    up = AnnotationService._upright(tf)
+    np.testing.assert_array_equal(up[:3, :3], tf[:3, :3])  # orientation preserved
+    np.testing.assert_array_equal(up[:3, 3], [0.0, 0.0, 0.0])  # world translation dropped
+    assert tf[0, 3] == 9.4e6  # input not mutated

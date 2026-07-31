@@ -256,10 +256,19 @@ function renderNav() {
   if (tfInfo && tfInfo.available) {
     tfRow.style.display = "flex";
     const box = el("ds-tf");
+    const sel = el("ds-tf-target");
     box.checked = !!tfInfo.active;
-    box.disabled = !tfInfo.resolvable;
+    box.disabled = sel.disabled = !tfInfo.resolvable;
+    // Keep the user's choice across frames: prefer the active target, else the
+    // current selection, else odom, else the first available frame.
+    const prev = sel.value;
+    sel.innerHTML = tfInfo.targets.map((t) => `<option>${t}</option>`).join("");
+    sel.value =
+      tfInfo.target ||
+      (tfInfo.targets.includes(prev) && prev) ||
+      (tfInfo.targets.includes("odom") ? "odom" : tfInfo.targets[0]);
     tfRow.title = tfInfo.resolvable
-      ? `Stand the scan upright by resolving its TF chain into the ${tfInfo.target} frame — stays on until you close Toaster`
+      ? "Stand the scan upright by resolving its TF chain into the chosen frame — stays on until Toaster closes"
       : "Resolving TFs needs apairo + apairo_transform installed";
   } else {
     tfRow.style.display = "none";
@@ -1054,9 +1063,15 @@ function wire() {
   viewer.setPointSize(+el("psize").value); // apply the slider's default at startup (engine default differs)
   el("round").onchange = (e) => viewer.setRound(e.target.checked);
   el("ds-tf").onchange = async (e) => {
-    tfInfo = await api.setTf(e.target.checked); // session-wide until Toaster closes
+    tfInfo = await api.setTf(e.target.checked, el("ds-tf-target").value); // session-wide until Toaster closes
     await loadCloud(); // server-side xyz changed — re-fetch geometry and reframe
-    el("ds-tf").checked = !!tfInfo.active;
+    renderNav();
+  };
+  el("ds-tf-target").onchange = async () => {
+    if (!el("ds-tf").checked) return; // just remembers the choice until resolution is on
+    tfInfo = await api.setTf(true, el("ds-tf-target").value);
+    await loadCloud();
+    renderNav();
   };
   el("hide-labeled").onchange = (e) => setHideLabeled(e.target.checked);
   el("vis-pill").onclick = revealAll;

@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import yaml
 
-from toaster.io.apairo_dataset import detect_tf, resolve_tf_matrix
+from toaster.io.apairo_dataset import detect_tf, list_tf_targets, resolve_tf_matrix
 
 CLOUD = "ouster_points"
 POSE = "tf__odom__base_link"
@@ -30,6 +30,7 @@ def _write_seq(
     cloud_frame: str | None = LIDAR_FRAME,
     calib_edges=("os_sensor_to_base_link",),
     with_pose_channel: bool = True,
+    with_map: bool = False,
     with_calibration: bool = True,
     n_points: int = 5,
     n_poses: int = 3,
@@ -39,15 +40,32 @@ def _write_seq(
     ap = seq / ".apairo"
     ap.mkdir(parents=True)
 
+    def pose_ch(parent, child):
+        return {
+            "kind": "raw",
+            "loader": "npy",
+            "transform": {"parent": parent, "child": child, "format": "t_xyz_q_xyzw"},
+        }
+
+    def write_pose(name):
+        pdir = seq / name
+        pdir.mkdir()
+        # stacked (M,7) [tx ty tz qx qy qz qw]; identity rotation, moving translation
+        poses = np.zeros((n_poses, 7), np.float64)
+        poses[:, 0] = np.arange(n_poses) * 10.0  # tx walks away
+        poses[:, 6] = 1.0  # qw = 1 (identity rotation)
+        np.save(pdir / f"{name}.npy", poses)
+        (pdir / "timestamps.txt").write_text(
+            "\n".join(str(1000.0 + i) for i in range(n_poses)) + "\n"
+        )
+
     channels: dict = {CLOUD: {"kind": "raw", "loader": "npys"}}
     if cloud_frame is not None:
         channels[CLOUD]["frame"] = cloud_frame
     if with_pose_channel:
-        channels[POSE] = {
-            "kind": "raw",
-            "loader": "npy",
-            "transform": {"parent": "odom", "child": BASE_FRAME, "format": "t_xyz_q_xyzw"},
-        }
+        channels[POSE] = pose_ch("odom", BASE_FRAME)
+    if with_map:
+        channels["tf__map__odom"] = pose_ch("map", "odom")
     (ap / "channels.yaml").write_text(yaml.safe_dump({"channels": channels}))
 
     if with_calibration:
@@ -67,16 +85,9 @@ def _write_seq(
     (cdir / "timestamps.txt").write_text("\n".join(str(1000.0 + i) for i in range(2)) + "\n")
 
     if with_pose_channel:
-        pdir = seq / POSE
-        pdir.mkdir()
-        # stacked (M,7) [tx ty tz qx qy qz qw]; identity rotation, moving translation
-        poses = np.zeros((n_poses, 7), np.float64)
-        poses[:, 0] = np.arange(n_poses) * 10.0  # tx walks away
-        poses[:, 6] = 1.0  # qw = 1 (identity rotation)
-        np.save(pdir / f"{POSE}.npy", poses)
-        (pdir / "timestamps.txt").write_text(
-            "\n".join(str(1000.0 + i) for i in range(n_poses)) + "\n"
-        )
+        write_pose(POSE)
+    if with_map:
+        write_pose("tf__map__odom")
 
     return cdir / "000000.npy"
 
@@ -87,11 +98,11 @@ def _write_seq(
 def test_detect_tf_resolvable_chain(tmp_path):
     tf = detect_tf(_write_seq(tmp_path))
     assert tf is not None
-    assert (tf.target, tf.base_frame, tf.lidar_frame, tf.pose_channel) == (
+    assert (tf.target, tf.base_frame, tf.lidar_frame, tf.pose_channels) == (
         "odom",
         BASE_FRAME,
         LIDAR_FRAME,
-        POSE,
+        (POSE,),
     )
 
 
@@ -130,6 +141,32 @@ def test_detect_tf_none_for_other_target(tmp_path):
     assert detect_tf(_write_seq(tmp_path), target="map") is None
 
 
+def test_detect_tf_map_needs_the_full_chain(tmp_path):
+    assert detect_tf(_write_seq(tmp_path / "a"), target="map") is None  # odom hop only
+    tf = detect_tf(_write_seq(tmp_path / "b", with_map=True), target="map")
+    assert tf is not None and tf.pose_channels == (POSE, "tf__map__odom")
+
+
+def test_detect_tf_base_frame_is_static_only(tmp_path):
+    tf = detect_tf(_write_seq(tmp_path), target=BASE_FRAME)
+    assert tf is not None and tf.pose_channels == ()  # no dynamic hop
+
+
+# ── list_tf_targets ──────────────────────────────────────────────────────────
+
+
+def test_list_tf_targets_base_outward(tmp_path):
+    assert list_tf_targets(_write_seq(tmp_path, with_map=True)) == [BASE_FRAME, "odom", "map"]
+
+
+def test_list_tf_targets_without_map(tmp_path):
+    assert list_tf_targets(_write_seq(tmp_path)) == [BASE_FRAME, "odom"]
+
+
+def test_list_tf_targets_empty_without_calibration(tmp_path):
+    assert list_tf_targets(_write_seq(tmp_path, with_calibration=False)) == []
+
+
 # ── resolve_tf_matrix guards (no apairo needed) ──────────────────────────────
 
 
@@ -155,6 +192,23 @@ def test_resolve_matrix_composes_mount_and_pose(tmp_path):
     # Frame 0's timestamp (1000.0) coincides with pose[0] (identity), so the
     # resolved transform must equal the static mount alone: get_tf(os_sensor,
     # base_link) = inv(mount edge).
+    np.testing.assert_allclose(tf, np.linalg.inv(_MOUNT_EDGE), atol=1e-6)
+
+
+def test_resolve_base_frame_is_static_mount_only(tmp_path):
+    pytest.importorskip("apairo")
+    pytest.importorskip("apairo_transform")
+    # Resolving into the base frame is the static mount alone: get_tf(sensor, base).
+    tf = resolve_tf_matrix(_write_seq(tmp_path), 0, BASE_FRAME)
+    np.testing.assert_allclose(tf, np.linalg.inv(_MOUNT_EDGE), atol=1e-6)
+
+
+def test_resolve_map_composes_the_two_hops(tmp_path):
+    pytest.importorskip("apairo")
+    pytest.importorskip("apairo_transform")
+    # Both dynamic hops are identity at t0, so map == odom == the static mount.
+    tf = resolve_tf_matrix(_write_seq(tmp_path, with_map=True), 0, "map")
+    assert tf is not None
     np.testing.assert_allclose(tf, np.linalg.inv(_MOUNT_EDGE), atol=1e-6)
 
 

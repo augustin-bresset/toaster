@@ -195,9 +195,10 @@
                   style="flex: 1; text-align: center; cursor: pointer">–</span>
             <button id="ds-next" title="Next frame (.)">▶</button>
           </div>
-          <label class="row" id="ds-tf-row" style="display: none; align-items: center; gap: 6px; margin-top: 4px">
-            <input id="ds-tf" type="checkbox" /> Resolve TFs (upright)
-          </label>
+          <div class="row" id="ds-tf-row" style="display: none; align-items: center; gap: 6px; margin-top: 4px">
+            <label style="display: flex; align-items: center; gap: 5px"><input id="ds-tf" type="checkbox" /> Resolve TF</label>
+            <select id="ds-tf-target" style="flex: 1" title="Body frame to stand the cloud up in"></select>
+          </div>
         </div>
       </div>
 

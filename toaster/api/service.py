@@ -141,34 +141,39 @@ class AnnotationService:
             self._tf_applied = tf
 
     def tf_info(self) -> dict[str, Any]:
-        """Whether the open frame's TFs can be resolved, and the current choice."""
+        """The frame's resolvable target frames and the current choice."""
         import importlib.util
 
-        from toaster.io.apairo_dataset import detect_tf
+        from toaster.io.apairo_dataset import list_tf_targets
 
         src = self._session.cloud.source if self._session else None
-        tf = detect_tf(src) if src is not None else None
+        targets = list_tf_targets(src) if src is not None else []
         resolvable = (
-            tf is not None
+            bool(targets)
             and importlib.util.find_spec("apairo") is not None
             and importlib.util.find_spec("apairo_transform") is not None
         )
         return {
-            "available": tf is not None,
+            "available": bool(targets),
             "resolvable": resolvable,
-            "target": tf.target if tf is not None else None,
+            "targets": targets,  # e.g. ["base_link", "odom", "map"]
+            "target": self._tf_resolve,  # the active choice, or None
             "active": self._tf_resolve is not None,
         }
 
-    def set_tf_resolve(self, active: bool) -> dict[str, Any]:
-        """Turn TF resolution on/off for the session and (re)apply to the open frame."""
+    def set_tf_resolve(self, active: bool, target: str | None = None) -> dict[str, Any]:
+        """Turn TF resolution on/off (into ``target``) for the session and (re)apply.
+
+        ``target`` picks the body frame to stand the cloud up in; ``None`` keeps
+        the current choice, or the default when first turned on.
+        """
         from toaster.io.apairo_dataset import (
             DEFAULT_TF_TARGET,
             detect_apairo_nav,
             resolve_tf_matrix,
         )
 
-        want = DEFAULT_TF_TARGET if active else None
+        want = (target or self._tf_resolve or DEFAULT_TF_TARGET) if active else None
         if want != self._tf_resolve:
             self._tf_resolve = want
             if self._session is not None:

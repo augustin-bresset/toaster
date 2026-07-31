@@ -23,6 +23,7 @@ __all__ = [
     "detect_apairo_channel",
     "detect_apairo_nav",
     "detect_tf",
+    "list_tf_targets",
     "resolve_tf_matrix",
     "frame_path",
     "frame_timestamp",
@@ -238,12 +239,14 @@ def write_labels_channel(
 
 @dataclass(frozen=True)
 class TfTarget:
-    """A resolvable TF chain for a cloud: sensor -> base (static) -> target (dynamic)."""
+    """A resolvable TF chain for a cloud: sensor -> base (static) -> target (dynamic hops)."""
 
-    target: str  #: body frame to resolve into, e.g. ``"odom"``
+    target: str  #: body frame to resolve into, e.g. ``"odom"`` or ``"map"``
     base_frame: str  #: rigid base frame, e.g. ``"base_link"``
     lidar_frame: str  #: the cloud's own frame, e.g. ``"os_sensor"``
-    pose_channel: str  #: dynamic pose of base in target, e.g. ``"tf__odom__base_link"``
+    #: ordered dynamic pose channels from base up to target (``tf__parent__child``);
+    #: empty when target *is* the base frame (static mount only).
+    pose_channels: tuple[str, ...]
 
 
 def _yaml(path: Path) -> dict:
@@ -264,13 +267,20 @@ def _calibration_frames(seq_dir: Path) -> set[str]:
     return frames
 
 
-def detect_tf(cloud_source: str | Path | None, target: str = DEFAULT_TF_TARGET) -> TfTarget | None:
-    """Whether ``cloud_source``'s frame can be resolved into ``target``, else ``None``.
+def _tf_edges(seq_dir: Path, channels: dict) -> dict[str, tuple[str, str]]:
+    """Dynamic ``tf__<parent>__<child>`` channels as ``{child: (parent, channel)}``."""
+    out: dict[str, tuple[str, str]] = {}
+    for name in channels:
+        if not str(name).startswith("tf__"):
+            continue
+        parent, sep, child = str(name)[4:].partition("__")
+        if sep and parent and child and (seq_dir / name).is_dir():
+            out[child] = (parent, name)
+    return out
 
-    Pure filesystem/YAML (no ``apairo`` import): needs a calibration tree, the
-    cloud channel's declared ``frame`` reachable in it, a base frame, and a
-    ``tf__<target>__<base>`` dynamic pose channel present in the sequence.
-    """
+
+def _tf_context(cloud_source: str | Path | None):
+    """``(seq_dir, channel, lidar_frame, base_frame, tf_edges)`` or ``None``."""
     if cloud_source is None:
         return None
     p = Path(cloud_source).resolve()
@@ -285,17 +295,67 @@ def detect_tf(cloud_source: str | Path | None, target: str = DEFAULT_TF_TARGET) 
     base_frame = next((b for b in _BASE_FRAME_HINTS if b in calib), None)
     if base_frame is None or base_frame == lidar_frame:
         return None
-    pose_channel = f"tf__{target}__{base_frame}"
-    if pose_channel not in channels or not (seq_dir / pose_channel).is_dir():
+    return seq_dir, channel, lidar_frame, base_frame, _tf_edges(seq_dir, channels)
+
+
+def list_tf_targets(cloud_source: str | Path | None) -> list[str]:
+    """Resolvable target frames, base outward, e.g. ``["base_link", "odom", "map"]``.
+
+    The base frame (static mount only) plus every frame reachable by walking the
+    dynamic ``tf__parent__child`` chain up from it. Empty if the cloud has no
+    resolvable TFs. Pure filesystem/YAML — no ``apairo`` import.
+    """
+    ctx = _tf_context(cloud_source)
+    if ctx is None:
+        return []
+    _, _, _, base_frame, edges = ctx
+    targets, frame, seen = [base_frame], base_frame, {base_frame}
+    while frame in edges:
+        parent = edges[frame][0]
+        if parent in seen:
+            break
+        targets.append(parent)
+        seen.add(parent)
+        frame = parent
+    return targets
+
+
+def _tf_chain(edges: dict[str, tuple[str, str]], base_frame: str, target: str) -> list[str] | None:
+    """Ordered pose channels from ``base_frame`` up to ``target``, or ``None`` if unreachable."""
+    chain: list[str] = []
+    frame, seen = base_frame, set()
+    while frame != target:
+        if frame in seen or frame not in edges:
+            return None
+        seen.add(frame)
+        parent, channel = edges[frame]
+        chain.append(channel)
+        frame = parent
+    return chain
+
+
+def detect_tf(cloud_source: str | Path | None, target: str = DEFAULT_TF_TARGET) -> TfTarget | None:
+    """Whether ``cloud_source``'s frame can be resolved into ``target``, else ``None``.
+
+    Pure filesystem/YAML (no ``apairo`` import): needs a calibration tree, the
+    cloud channel's declared ``frame`` reachable in it, a base frame, and a dynamic
+    ``tf__parent__child`` chain from the base up to ``target`` (empty for the base).
+    """
+    ctx = _tf_context(cloud_source)
+    if ctx is None:
+        return None
+    _, _, lidar_frame, base_frame, edges = ctx
+    chain = _tf_chain(edges, base_frame, target)
+    if chain is None:
         return None
     return TfTarget(
-        target=target, base_frame=base_frame, lidar_frame=lidar_frame, pose_channel=pose_channel
+        target=target, base_frame=base_frame, lidar_frame=lidar_frame, pose_channels=tuple(chain)
     )
 
 
-#: (seq_dir, cloud_channel, target) -> (synced-dataset, static-mount 4x4). The
-#: synchronized view is lazy and immutable, so it is safe to reuse across frames
-#: of the same sequence instead of rebuilding it on every navigation.
+#: (seq_dir, cloud_channel, target) -> (synced-dataset-or-None, static-mount 4x4).
+#: The synchronized view is lazy and immutable, so it is safe to reuse across
+#: frames of the same sequence instead of rebuilding it on every navigation.
 _TF_CACHE: dict[tuple[str, str, str], tuple[object, np.ndarray]] = {}
 
 
@@ -304,11 +364,10 @@ def resolve_tf_matrix(
 ) -> np.ndarray | None:
     """The 4x4 ``T_target_from_sensor`` for this frame, or ``None`` if unresolvable.
 
-    Composes the static sensor->base mount (``Calibration.get_tf``) with the
-    dynamic base->target pose interpolated onto the cloud's timestamp
-    (``Se3Interp``). Apply it to the cloud's ``(N, 3)`` xyz to stand it upright.
-    Requires ``apairo`` and ``apairo_transform``; returns ``None`` if either the
-    chain is absent or the packages are missing.
+    Composes the static sensor->base mount (``Calibration.get_tf``) with each
+    dynamic base->...->target pose interpolated onto the cloud's timestamp
+    (``Se3Interp``). Apply it to the cloud's ``(N, 3)`` xyz. Requires ``apairo`` and
+    ``apairo_transform``; returns ``None`` if the chain or packages are absent.
     """
     tf = detect_tf(cloud_source, target)
     if tf is None or frame_index < 0:
@@ -324,15 +383,21 @@ def resolve_tf_matrix(
     key = (str(seq_dir), channel, target)
     entry = _TF_CACHE.get(key)
     if entry is None:
-        ds = apairo.RawDataset(str(seq_dir), keys=[channel, tf.pose_channel])
+        ds = apairo.RawDataset(str(seq_dir), keys=[channel, *tf.pose_channels])
         mount = np.asarray(ds.calibration.get_tf(tf.lidar_frame, tf.base_frame), dtype=np.float64)
-        synced = ds.synchronize(reference=channel, method={tf.pose_channel: Se3Interp()}).transform(
-            tf.pose_channel, PoseTo4x4()
-        )
+        synced = None
+        if tf.pose_channels:
+            synced = ds.synchronize(
+                reference=channel, method={pc: Se3Interp() for pc in tf.pose_channels}
+            )
+            for pc in tf.pose_channels:
+                synced = synced.transform(pc, PoseTo4x4())
         entry = (synced, mount)
         _TF_CACHE[key] = entry
     synced, mount = entry
-    t_target_base = np.asarray(synced[frame_index].data[tf.pose_channel], dtype=np.float64).reshape(
-        4, 4
-    )
-    return t_target_base @ mount
+    t = mount
+    if synced is not None:  # compose base -> ... -> target: T = hop @ T
+        sample = synced[frame_index]
+        for pc in tf.pose_channels:
+            t = np.asarray(sample.data[pc], dtype=np.float64).reshape(4, 4) @ t
+    return t

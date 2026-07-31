@@ -111,6 +111,7 @@ class ApairoBody(BaseModel):
 
 class TfResolveBody(BaseModel):
     active: bool  # resolve the TF chain (stand the cloud upright) or keep the sensor frame
+    target: str | None = None  # body frame to resolve into (e.g. "odom"); None keeps the current
 
 
 class SessionNameBody(BaseModel):
@@ -218,7 +219,7 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
 
     @app.post("/api/apairo_tf")
     def apairo_tf(body: TfResolveBody):
-        return service.set_tf_resolve(body.active)
+        return service.set_tf_resolve(body.active, body.target)
 
     @app.post("/api/apairo_open")
     def apairo_open(body: ApairoOpenBody):

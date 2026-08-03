@@ -6,7 +6,6 @@ with :func:`register_loader`; see :class:`~toaster.io.base.Loader`.
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 
 from toaster.core import PointCloud
@@ -71,10 +70,8 @@ register_loader(LasLoader())
 register_loader(PcdLoader())
 register_loader(NpyLoader())
 
-# Prefer Open3D for PCD when available (it also decodes binary_compressed);
-# leave .ply to the lighter built-in loader. Detected without importing the
-# heavy module; the loader imports it lazily.
-if importlib.util.find_spec("open3d") is not None:
-    from .open3d_loader import Open3DLoader
-
-    LOADERS[".pcd"] = Open3DLoader()
+# Open3D is *not* registered even when installed: the built-in readers cover the
+# same files (PcdLoader decodes binary_compressed too) and keep the intensity and
+# label channels Open3D's point cloud drops. Register it yourself if you want it:
+#     from toaster.io.open3d_loader import Open3DLoader
+#     register_loader(Open3DLoader())

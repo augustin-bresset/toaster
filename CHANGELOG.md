@@ -8,6 +8,26 @@ All notable changes to Toaster are documented here. The format follows
 
 ### Added
 
+- **Full PCD support, dependency-free** — the `.pcd` reader now handles every
+  encoding PCL writes, including `binary_compressed` (LZF, decoded by a small
+  pure-Python `toaster.io._lzf`; the `lzf` C module is used instead when
+  installed). It also reads the field layouts that used to be rejected or
+  mis-parsed: the `_` padding fields PCL emits for its aligned point types
+  (`PointXYZRGB` and friends), multi-element fields (`COUNT` > 1, e.g. normals),
+  headers with no `POINTS` line, and CRLF headers. `intensity`, packed
+  `rgb`/`rgba` (correctly decoded whether stored as float bits or as an
+  integer), `normal_x/y/z` and a `label` field are picked up as features and
+  starting labels; organized clouds' NaN pixels are dropped like the other
+  loaders do, with the survivor mask kept for realignment.
+
+### Changed
+
+- **Open3D no longer takes over `.pcd`** when the `open3d` extra is installed.
+  It was registered for the `binary_compressed` files the built-in reader could
+  not decode; now that it can, the built-in stays in charge and keeps the
+  intensity and label channels Open3D's `PointCloud` drops. `Open3DLoader`
+  remains available — `register_loader(Open3DLoader())` to opt back in.
+
 - **Rerun-style point shading + finer, capped outline** — each point sprite
   now gets a soft centre-to-rim highlight (the same falloff `re_renderer`,
   rerun's renderer, uses for its points/spheres) plus anti-aliased edges,

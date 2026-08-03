@@ -41,9 +41,9 @@ git clone https://github.com/augustin-bresset/toaster && cd toaster
 uv venv && uv pip install -e ".[dev]"     # or: pip install -e ".[dev]"
 ```
 
-Optional extras: `csf` (CSF ground detection), `hdbscan`, `open3d` (robust
-`.pcd`), `apairo` (load apairo datasets), `models` (ONNX), `torch`, `viewer3d`
-(legacy PyVista backend).
+Optional extras: `csf` (CSF ground detection), `hdbscan`, `apairo` (load apairo
+datasets), `models` (ONNX), `torch`, `viewer3d` (legacy PyVista backend),
+`open3d` (an escape-hatch loader — not registered by default).
 
 ## Run the app
 
@@ -180,7 +180,7 @@ register_loader(XyzLoader())
 ```
 toaster/
   core/         domain — numpy-only, headless, 100% unit-tested
-  io/           pluggable loaders (registry): .ply/.bin/.las/.laz/.pcd (+apairo)
+  io/           pluggable loaders (registry): .ply/.bin/.las/.laz/.pcd/.npy (+apairo)
   segment/      pluggable segmenters (registry): clustering + ground detection
   persistence/  label / schema / session sidecars
   interaction/  headless controller (select -> assign workflow) + flat snapshot

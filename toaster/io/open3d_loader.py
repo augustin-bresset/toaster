@@ -1,8 +1,10 @@
 """Optional Open3D-backed loader (``open3d`` extra).
 
-When Open3D is installed the registry uses this for ``.pcd`` (and can for
-``.ply``), since Open3D also decodes ``binary_compressed`` PCD that the built-in
-reader skips. Open3D is heavy, so it is imported lazily inside :meth:`load`.
+Not registered by default: the built-in ``.pcd`` / ``.ply`` readers cover the
+same files and keep the intensity and label channels Open3D's ``PointCloud``
+has no room for. Kept as an escape hatch for a file the built-ins choke on —
+:func:`~toaster.io.register_loader` it yourself to take over those extensions.
+Open3D is heavy, so it is imported lazily inside :meth:`load`.
 """
 
 from __future__ import annotations

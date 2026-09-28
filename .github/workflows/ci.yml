@@ -27,9 +27,11 @@ jobs:
 
       # pip ignores [tool.uv.sources] (the local ../projector checkout) and
       # projector-engine is not on PyPI yet: install it from GitHub first so the
-      # toaster install finds the requirement already satisfied.
+      # toaster install finds the requirement already satisfied. Pinned to a
+      # release tag so a projector push can't break toaster's CI — bump it (and
+      # the README's) when toaster needs a newer engine.
       - name: Install projector-engine
-        run: pip install "projector-engine @ git+https://github.com/augustin-bresset/projector.git@main"
+        run: pip install "projector-engine @ git+https://github.com/augustin-bresset/projector.git@v0.1.0"
 
       - name: Install
         run: pip install -e ".[dev,csf]"

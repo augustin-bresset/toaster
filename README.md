@@ -38,7 +38,7 @@ get a grouping, click a cluster to select its whole group, assign a class.
 
 ```bash
 git clone https://github.com/augustin-bresset/toaster && cd toaster
-pip install "projector-engine @ git+https://github.com/augustin-bresset/projector.git"
+pip install "projector-engine @ git+https://github.com/augustin-bresset/projector.git@v0.1.0"
 pip install -e ".[dev]"
 ```
 

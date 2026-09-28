@@ -2010,7 +2010,7 @@ wheels = [
 ]
 
 [[package]]
-name = "projector"
+name = "projector-engine"
 version = "0.1.0"
 source = { editable = "../projector" }
 dependencies = [
@@ -2020,7 +2020,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "apairo", marker = "extra == 'apairo'", git = "https://github.com/apairo-robotics/apairo.git?rev=v0.5.0" },
+    { name = "apairo", marker = "extra == 'apairo'", specifier = ">=0.8" },
     { name = "fastapi", marker = "extra == 'api'" },
     { name = "fastapi", marker = "extra == 'app'" },
     { name = "numpy" },
@@ -3125,7 +3125,7 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "plyfile" },
-    { name = "projector" },
+    { name = "projector-engine" },
     { name = "pywebview", extra = ["pyside6"] },
     { name = "pyyaml" },
     { name = "scikit-learn" },
@@ -3178,7 +3178,7 @@ requires-dist = [
     { name = "playwright", marker = "extra == 'dev'" },
     { name = "plyfile" },
     { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "projector", editable = "../projector" },
+    { name = "projector-engine", editable = "../projector" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pyvista", marker = "extra == 'viewer3d'" },
     { name = "pywebview", extras = ["pyside6"] },

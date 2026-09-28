@@ -20,9 +20,10 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     # Shared three.js point-cloud engine, served from projector's install via
-    # projector.web_engine_dir(). projector is a sibling checkout in ~/dev,
-    # resolved from there by [tool.uv.sources] below (editable).
-    "projector",
+    # projector.web_engine_dir(). Distributed as projector-engine (the PyPI name
+    # `projector` is an unrelated py2 package); the import name is `projector`.
+    # A sibling checkout in ~/dev, resolved by [tool.uv.sources] below (editable).
+    "projector-engine",
     # Webview host for the desktop window. The pyside6 extra pulls PySide6 (LGPL,
     # with QtWebEngine) and the qtpy shim pywebview's Qt backend imports. For a
     # fully Qt-free host install system WebKitGTK and drop this to a bare pywebview.
@@ -50,7 +51,7 @@ dev = ["pytest", "ruff==0.15.22", "pre-commit", "httpx", "playwright"]  # playwr
 # projector (the shared engine) is co-developed locally in ~/dev; resolve the
 # dependency from the sibling checkout (editable) rather than from an index.
 [tool.uv.sources]
-projector = { path = "../projector", editable = true }
+projector-engine = { path = "../projector", editable = true }
 
 [project.scripts]
 toaster = "toaster.desktop:main"

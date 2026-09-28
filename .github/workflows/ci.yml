@@ -25,6 +25,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
+      # pip ignores [tool.uv.sources] (the local ../projector checkout) and
+      # projector-engine is not on PyPI yet: install it from GitHub first so the
+      # toaster install finds the requirement already satisfied.
+      - name: Install projector-engine
+        run: pip install "projector-engine @ git+https://github.com/augustin-bresset/projector.git@main"
+
       - name: Install
         run: pip install -e ".[dev,csf]"
 

@@ -8,10 +8,12 @@ state. The built web UI (if present) is served at ``/``.
 from __future__ import annotations
 
 import importlib.resources as resources
+import os
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from projector import web_engine_dir
 from pydantic import BaseModel
 
 from toaster.core import LabelSchema
@@ -283,6 +285,13 @@ def create_app(schema: LabelSchema | None = None) -> FastAPI:
     @app.post("/api/class/remove")
     def class_remove(body: RemoveClassBody):
         return service.remove_class(body.class_id)
+
+    # -- shared three.js engine, served from projector's install --
+    # Registered BEFORE the "/" catch-all so /js/engine/* resolves here instead
+    # of falling through to index.html. Preserves the local copy's URL.
+    _eng = web_engine_dir()
+    if os.path.isdir(_eng):
+        app.mount("/js/engine", StaticFiles(directory=_eng), name="engine")
 
     # -- static web front (served at / when built) --
     web_dir = resources.files("toaster") / "web"

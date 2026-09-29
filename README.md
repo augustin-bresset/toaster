@@ -39,8 +39,15 @@ get a grouping, click a cluster to select its whole group, assign a class.
 
 ```bash
 git clone https://github.com/augustin-bresset/toaster && cd toaster
-uv venv && uv pip install -e ".[dev]"     # or: pip install -e ".[dev]"
+pip install "projector-engine @ git+https://github.com/augustin-bresset/projector.git@v0.1.0"
+pip install -e ".[dev]"
 ```
+
+Toaster's 3D engine comes from **projector-engine**, which is not on PyPI yet:
+install it from GitHub first, as above. To co-develop both, clone
+[projector](https://github.com/augustin-bresset/projector) next to toaster
+(`../projector`) and run `uv sync --extra dev` — `[tool.uv.sources]` resolves it
+from the sibling checkout, editable.
 
 Optional extras: `csf` (CSF ground detection), `hdbscan`, `open3d` (robust
 `.pcd`), `apairo` (load apairo datasets), `models` (ONNX), `torch`, `viewer3d`

@@ -1944,6 +1944,36 @@ wheels = [
 ]
 
 [[package]]
+name = "projector-engine"
+version = "0.1.0"
+source = { editable = "../projector" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "apairo", marker = "extra == 'apairo'", specifier = ">=0.8" },
+    { name = "fastapi", marker = "extra == 'api'" },
+    { name = "fastapi", marker = "extra == 'app'" },
+    { name = "numpy" },
+    { name = "pywebview", extras = ["qt"], marker = "extra == 'app'" },
+    { name = "pyyaml", marker = "extra == 'apairo'" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'app'" },
+]
+provides-extras = ["apairo", "api", "app"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx2" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "ruff", specifier = "==0.15.22" },
+]
+
+[[package]]
 name = "protobuf"
 version = "7.35.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3017,6 +3047,7 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "plyfile" },
+    { name = "projector-engine" },
     { name = "pywebview", extra = ["pyside6"] },
     { name = "pyyaml" },
     { name = "scikit-learn" },
@@ -3065,6 +3096,7 @@ requires-dist = [
     { name = "open3d", marker = "extra == 'open3d'" },
     { name = "playwright", marker = "extra == 'dev'" },
     { name = "plyfile" },
+    { name = "projector-engine", editable = "../projector" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pyvista", marker = "extra == 'viewer3d'" },
     { name = "pywebview", extras = ["pyside6"] },
